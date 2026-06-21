@@ -6,6 +6,8 @@ from analysis.router import router as analysis_router
 from ml.router import router as ml_router
 from results_router import router as results_router
 from generator.router import router as generator_router
+from scripts.clean import load_config, apply_cleaning
+from state import state
 
 app = FastAPI(title="Water-Energy Nexus Dashboard", version="1.0.0")
 
@@ -29,6 +31,27 @@ app.include_router(analysis_router, prefix="/api/analysis")
 app.include_router(ml_router, prefix="/api/ml")
 app.include_router(results_router, prefix="/api")
 app.include_router(generator_router, prefix="/api/generator")
+
+
+@app.on_event("startup")
+def apply_cleaning_config_on_startup():
+    try:
+        config = load_config()
+    except Exception:
+        return
+
+    if not config:
+        return
+
+    dataset = config.get("dataset", "original")
+    df = state.get_dataset(dataset)
+    if df is None:
+        return
+
+    cleaned = apply_cleaning(df.copy(), config)
+    state._cleaned_df = cleaned
+    state.cleaning_pipeline = config.get("cleaning", [])
+    state.set_active_dataset("cleaned")
 
 
 @app.get("/api/health")

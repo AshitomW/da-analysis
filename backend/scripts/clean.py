@@ -20,6 +20,25 @@ import pandas as pd
 from state import state
 
 
+def _categorical_placeholder(column_name: str) -> str:
+    lower = column_name.lower()
+    if "policy" in lower:
+        return "not_policy"
+    if "patent" in lower:
+        return "no_patent"
+    if "publication" in lower or "venue" in lower:
+        return "no_publication"
+    if "organization" in lower or lower.endswith("org"):
+        return "unknown_organization"
+    if "dataset" in lower:
+        return "unknown_dataset"
+    if "country" in lower:
+        return "unknown_country"
+    if "region" in lower:
+        return "unknown_region"
+    return "unknown"
+
+
 def load_config(path=None):
     if path is None:
         path = os.path.join(backend_dir, "cleaning_config.yaml")
@@ -59,8 +78,13 @@ def apply_cleaning(df: pd.DataFrame, config: dict) -> pd.DataFrame:
         elif op == "fill_na_mode":
             for c in cols:
                 if c in df.columns:
+                    df[c] = df[c].replace(r"^\s*$", pd.NA, regex=True)
+                    placeholder = _categorical_placeholder(c)
                     modes = df[c].mode()
-                    df[c] = df[c].fillna(modes.iloc[0] if not modes.empty else "")
+                    if c in {"policy_type", "policy_level", "policy_stringency_score", "patent_class", "patent_family_size", "publication_venue", "open_access"}:
+                        df[c] = df[c].fillna(placeholder)
+                    else:
+                        df[c] = df[c].fillna(modes.iloc[0] if not modes.empty else placeholder)
 
         elif op == "remove_outliers_iqr":
             factor = step.get("factor", 1.5)

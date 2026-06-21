@@ -2,7 +2,33 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, OneHotEncoder, LabelEncoder
-from sklearn.impute import SimpleImputer
+
+
+def _numeric_like_ratio(series: pd.Series) -> float:
+    values = series.dropna().astype(str).str.replace(",", "", regex=False).str.strip()
+    if values.empty:
+        return 0.0
+    coerced = pd.to_numeric(values, errors="coerce")
+    return float(coerced.notna().mean())
+
+
+def _categorical_placeholder(column_name: str) -> str:
+    lower = column_name.lower()
+    if "policy" in lower:
+        return "not_policy"
+    if "patent" in lower:
+        return "no_patent"
+    if "publication" in lower or "venue" in lower:
+        return "no_publication"
+    if "organization" in lower or lower.endswith("org"):
+        return "unknown_organization"
+    if "dataset" in lower:
+        return "unknown_dataset"
+    if "country" in lower:
+        return "unknown_country"
+    if "region" in lower:
+        return "unknown_region"
+    return "unknown"
 
 
 def prepare_data(
@@ -14,20 +40,44 @@ def prepare_data(
     test_size: float = 0.2,
     random_state: int = 42,
 ):
-    data = df[feature_cols + [target_col]].dropna().copy()
+    data = df[feature_cols + [target_col]].copy()
+
+    if target_col not in data.columns:
+        raise ValueError(f"Target column '{target_col}' not found")
+
+    data[target_col] = pd.to_numeric(
+        data[target_col].astype(str).str.replace(",", "", regex=False).str.strip(),
+        errors="coerce",
+    )
+    data = data[data[target_col].notna()].copy()
     if len(data) < 10:
-        raise ValueError(f"Only {len(data)} rows after dropping NaN — need at least 10")
+        raise ValueError(f"Only {len(data)} rows remain after target cleanup — need at least 10")
 
     X = data[feature_cols].copy()
     y = data[target_col].copy()
 
-    cat_cols = X.select_dtypes(exclude="number").columns.tolist()
-    num_cols = X.select_dtypes(include="number").columns.tolist()
+    cat_cols = []
+    num_cols = []
+    for c in feature_cols:
+        if c not in X.columns:
+            continue
+        ratio = _numeric_like_ratio(X[c])
+        if ratio >= 0.85:
+            X[c] = pd.to_numeric(
+                X[c].astype(str).str.replace(",", "", regex=False).str.strip(),
+                errors="coerce",
+            )
+            num_cols.append(c)
+        else:
+            X[c] = X[c].replace(r"^\s*$", np.nan, regex=True)
+            X[c] = X[c].fillna(_categorical_placeholder(c)).astype(str)
+            cat_cols.append(c)
 
-    for c in cat_cols:
-        X[c] = X[c].fillna("unknown").astype(str)
     for c in num_cols:
-        X[c] = X[c].fillna(X[c].median())
+        if X[c].notna().any():
+            X[c] = X[c].fillna(X[c].median())
+        else:
+            X[c] = X[c].fillna(0)
 
     if encode_categories and cat_cols:
         enc = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
