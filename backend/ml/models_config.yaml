@@ -1,0 +1,62 @@
+dataset: cleaned
+
+targets:
+  exclude:
+    - entry_id
+    - title
+    - abstract_summary
+    - keywords
+    - language
+    - dataset_used
+    - publication_venue
+    - model_performance_metric
+    - model_performance_value
+    - open_access
+    - patent_class
+    - policy_type
+    - policy_level
+    - policy_stringency_score
+    - year
+    - month
+    - patent_family_size
+    - venue_h_index
+    - population_served
+    - citation_count
+    - impact_score
+    - innovation_index
+    - renewable_energy_share_pct
+
+models:
+  Linear Regression:
+    enabled: true
+    params: {}
+  Decision Tree:
+    enabled: true
+    params:
+      max_depth: 8
+  Random Forest:
+    enabled: true
+    params:
+      n_estimators: 100
+      max_depth: 10
+      min_samples_leaf: 4
+  Gradient Boosting:
+    enabled: true
+    params:
+      n_estimators: 100
+      max_depth: 4
+      learning_rate: 0.1
+  Neural Network:
+    enabled: true
+    params:
+      hidden_layer_sizes: [64, 32]
+      max_iter: 100
+      learning_rate_init: 0.01
+      early_stopping: true
+  Ensemble (Voting):
+    enabled: true
+    params: {}
+  K-Means Clustering:
+    enabled: true
+    params:
+      n_clusters: 3

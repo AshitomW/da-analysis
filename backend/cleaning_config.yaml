@@ -1,0 +1,24 @@
+dataset: original
+
+cleaning:
+  - operation: drop_columns
+    columns:
+      - entry_id
+      - title
+      - abstract_summary
+      - keywords
+
+  - operation: fill_na_median
+    columns: __numeric__
+
+  - operation: fill_na_mode
+    columns: __categorical__
+
+  - operation: remove_outliers_iqr
+    columns:
+      - funding_usd
+      - investment_roi
+      - co2_reduction_tons
+      - water_savings_liters
+      - energy_savings_kwh
+    factor: 3.0
