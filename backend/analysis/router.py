@@ -71,6 +71,30 @@ def temporal(group: str = "year"):
     return _sanitize({"group": group, "data": vc.to_dict(orient="records")})
 
 
+@router.get("/funding-by-year")
+def funding_by_year():
+    df = get_df()
+    if "year" not in df.columns or "funding_usd" not in df.columns:
+        raise HTTPException(400, "Year or funding_usd column not found")
+    
+    # Convert year to numeric and drop NaN
+    df_clean = df.dropna(subset=["year", "funding_usd"]).copy()
+    df_clean["year"] = pd.to_numeric(df_clean["year"], errors="coerce")
+    df_clean = df_clean.dropna(subset=["year"])
+    df_clean["year"] = df_clean["year"].astype(int)
+    
+    # Group by year and calculate sum & mean funding
+    grouped = df_clean.groupby("year")["funding_usd"].agg(["sum", "mean", "count"]).reset_index()
+    grouped.columns = ["year", "total_funding", "average_funding", "count"]
+    grouped = grouped.sort_values("year")
+    
+    # Format in Millions of USD
+    grouped["total_funding_m"] = (grouped["total_funding"] / 1e6).round(2)
+    grouped["average_funding_m"] = (grouped["average_funding"] / 1e6).round(2)
+    
+    return _sanitize({"data": grouped.to_dict(orient="records")})
+
+
 @router.get("/geographic")
 def geographic():
     df = get_df()

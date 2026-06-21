@@ -4,7 +4,7 @@ import { formatNumber } from '../utils/format'
 import { colLabel, colUnit } from '../utils/columns'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, Cell,
+  LineChart, Line, Cell, ComposedChart, Legend,
 } from 'recharts'
 import { DollarSign, Target, Leaf, Cpu, Globe, Calendar, BarChart3, BookOpen } from 'lucide-react'
 import { Skeleton } from '../components/Skeleton'
@@ -21,19 +21,22 @@ export default function Analyze() {
   const [selectedCol, setSelectedCol] = useState('funding_usd')
   const [corr, setCorr] = useState<any>(null)
   const [distributions, setDistributions] = useState<Record<string, any[]>>({})
+  const [fundingByYear, setFundingByYear] = useState<any[]>([])
 
   useEffect(() => {
     const load = async () => {
-      const [s, num, temp, corrData] = await Promise.all([
+      const [s, num, temp, corrData, fByYear] = await Promise.all([
         api.get<any>('/analysis/summary'),
         api.get<any>('/analysis/numeric-overview'),
         api.get<any>('/analysis/temporal?group=year'),
         api.get<any>('/analysis/correlation'),
+        api.get<any>('/analysis/funding-by-year'),
       ])
       setSummary(s)
       setNumOverview(num?.columns || {})
       setTemporalData(temp.data || [])
       setCorr(corrData)
+      setFundingByYear(fByYear.data || [])
 
       const dists: Record<string, any[]> = {}
       const allCols = [...TECH_COLS, ...GEO_COLS, 'entry_type', 'sdg_alignment', 'status', 'quarter']
@@ -132,6 +135,41 @@ export default function Analyze() {
             </ResponsiveContainer>
           ) : <p className="text-sm text-text-muted py-8 text-center">No data</p>}
         </div>
+      </div>
+
+      <div className="lifted p-6 space-y-4">
+        <h3 className="mb-3">Funding Trend by Year</h3>
+        <p className="text-[11px] text-text-muted mb-3 leading-relaxed">
+          Annual total and average funding. The blue bars represent total funding ($M) on the left axis, and the green line represents average funding ($M) on the right axis.
+        </p>
+        {fundingByYear && fundingByYear.length > 0 ? (
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart data={fundingByYear} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="year" tick={{ fontSize: 11 }} />
+              <YAxis 
+                yAxisId="left" 
+                orientation="left" 
+                tick={{ fontSize: 10 }}
+                label={{ value: 'Total Funding ($M)', angle: -90, position: 'insideLeft', offset: 0, style: { textAnchor: 'middle', fontSize: 10, fill: '#64748b', fontWeight: 500 } }} 
+              />
+              <YAxis 
+                yAxisId="right" 
+                orientation="right" 
+                tick={{ fontSize: 10 }}
+                label={{ value: 'Average Funding ($M)', angle: 90, position: 'insideRight', offset: 0, style: { textAnchor: 'middle', fontSize: 10, fill: '#64748b', fontWeight: 500 } }} 
+              />
+              <Tooltip formatter={(value: any, name: string) => {
+                if (name === 'total_funding_m') return [`$${value}M`, 'Total Funding'];
+                if (name === 'average_funding_m') return [`$${value}M`, 'Average Funding'];
+                return [value, name];
+              }} />
+              <Legend verticalAlign="top" height={36} iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+              <Bar yAxisId="left" dataKey="total_funding_m" fill="#2563EB" radius={[2, 2, 0, 0]} name="Total Funding" />
+              <Line yAxisId="right" type="monotone" dataKey="average_funding_m" stroke="#059669" strokeWidth={2} dot={{ r: 4 }} name="Average Funding" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        ) : <p className="text-sm text-text-muted py-8 text-center">No temporal funding data</p>}
       </div>
 
       <div className="lifted p-6 space-y-4">
