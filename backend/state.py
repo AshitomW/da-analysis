@@ -15,6 +15,25 @@ DEFAULT_CANDIDATES = [
 ]
 
 
+def _categorical_placeholder(column_name: str) -> str:
+    lower = column_name.lower()
+    if "policy" in lower:
+        return "not_policy"
+    if "patent" in lower:
+        return "no_patent"
+    if "publication" in lower or "venue" in lower:
+        return "no_publication"
+    if "organization" in lower or lower.endswith("org"):
+        return "unknown_organization"
+    if "dataset" in lower:
+        return "unknown_dataset"
+    if "country" in lower:
+        return "unknown_country"
+    if "region" in lower:
+        return "unknown_region"
+    return "unknown"
+
+
 class AppState:
     def __init__(self):
         self._original_df: Optional[pd.DataFrame] = None
@@ -79,7 +98,12 @@ class AppState:
         for c in df.select_dtypes(include="number").columns:
             df[c] = df[c].fillna(df[c].median())
         for c in df.select_dtypes(exclude="number").columns:
-            df[c] = df[c].fillna(df[c].mode().iloc[0] if not df[c].mode().empty else "")
+            placeholder = _categorical_placeholder(c)
+            df[c] = df[c].replace(r"^\s*$", pd.NA, regex=True)
+            if c in {"policy_type", "policy_level", "policy_stringency_score", "patent_class", "patent_family_size", "publication_venue", "open_access"}:
+                df[c] = df[c].fillna(placeholder)
+            else:
+                df[c] = df[c].fillna(df[c].mode().iloc[0] if not df[c].mode().empty else placeholder)
         num_cols = df.select_dtypes(include="number").columns
         for c in num_cols:
             q1, q3 = df[c].quantile(0.25), df[c].quantile(0.75)
