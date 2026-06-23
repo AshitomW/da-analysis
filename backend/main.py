@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from data.router import router as data_router
 from data.cleaning_router import router as cleaning_router
 from analysis.router import router as analysis_router
-from ml.router import router as ml_router
 from results_router import router as results_router
 from generator.router import router as generator_router
 from scripts.clean import load_config, apply_cleaning
@@ -28,7 +27,6 @@ app.add_middleware(
 app.include_router(data_router, prefix="/api/data")
 app.include_router(cleaning_router, prefix="/api/clean")
 app.include_router(analysis_router, prefix="/api/analysis")
-app.include_router(ml_router, prefix="/api/ml")
 app.include_router(results_router, prefix="/api")
 app.include_router(generator_router, prefix="/api/generator")
 

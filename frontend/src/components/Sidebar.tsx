@@ -10,7 +10,7 @@ const links = [
   { to: '/quality', label: 'Quality', icon: FlaskConical },
   { to: '/clean', label: 'Clean', icon: Sparkles },
   { to: '/analyze', label: 'Analyze', icon: BarChart3 },
-  { to: '/ml-models', label: 'ML Models', icon: Brain },
+  { to: '/research-modeling', label: 'Research & Modeling', icon: Brain },
 ]
 
 export default function Sidebar() {

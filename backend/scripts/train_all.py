@@ -25,13 +25,102 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.cluster import KMeans
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from scipy.stats import chi2_contingency
 
 from state import state
+
+
+# ── prediction targets calculations ──────────────────────────────────
+
+def _percentile_component(df, col, log=False):
+    if col not in df.columns:
+        return pd.Series(0.5, index=df.index)
+    values = pd.to_numeric(df[col], errors="coerce")
+    if log:
+        values = np.log1p(values.clip(lower=0))
+    if values.notna().sum() < 2:
+        return pd.Series(0.5, index=df.index)
+    ranked = values.rank(pct=True)
+    return ranked.fillna(ranked.median()).clip(0, 1)
+
+
+def _mapped_component(df, col, mapping, default=0.5):
+    if col not in df.columns:
+        return pd.Series(default, index=df.index)
+    values = df[col].fillna("").astype(str).str.strip().str.lower()
+    return values.map(mapping).fillna(default).clip(0, 1)
+
+
+def add_prediction_targets(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    status_score = _mapped_component(df, "status", {
+        "completed": 1.0,
+        "granted": 0.95,
+        "published": 0.85,
+        "active": 0.82,
+        "ongoing": 0.76,
+        "under evaluation": 0.62,
+        "proposed": 0.45,
+        "preprint / arxiv": 0.38,
+        "draft stage": 0.30,
+        "amended": 0.70,
+        "repealed": 0.18,
+        "terminated early": 0.12,
+        "abandoned": 0.08,
+    })
+    scale_score = _mapped_component(df, "deployment_scale", {
+        "local / community": 0.25,
+        "pilot / proof of concept": 0.38,
+        "city-level": 0.52,
+        "regional": 0.68,
+        "national": 0.84,
+        "global": 1.0,
+    })
+    collaboration_score = _mapped_component(df, "collaboration_type", {
+        "multi-stakeholder consortium": 1.0,
+        "public-private partnership (ppp)": 0.92,
+        "academic-industry": 0.86,
+        "academic-government": 0.82,
+        "international bilateral": 0.78,
+        "government": 0.74,
+        "industry": 0.70,
+        "academic": 0.64,
+        "ngo / civil society": 0.58,
+    })
+
+    df["project_value_score"] = (
+        100 * (
+            0.35 * _percentile_component(df, "impact_score")
+            + 0.25 * _percentile_component(df, "investment_roi")
+            + 0.20 * _percentile_component(df, "innovation_index")
+            + 0.20 * _percentile_component(df, "population_served", log=True)
+        )
+    ).round(2)
+
+    df["resource_efficiency_score"] = (
+        100 * (
+            0.35 * _percentile_component(df, "co2_reduction_tons", log=True)
+            + 0.30 * _percentile_component(df, "water_savings_liters", log=True)
+            + 0.25 * _percentile_component(df, "energy_savings_kwh", log=True)
+            + 0.10 * _percentile_component(df, "renewable_energy_share_pct")
+        )
+    ).round(2)
+
+    df["deployment_readiness_score"] = (
+        100 * (
+            0.35 * status_score
+            + 0.30 * scale_score
+            + 0.20 * collaboration_score
+            + 0.15 * _percentile_component(df, "policy_stringency_score")
+        )
+    ).round(2)
+
+    return df
 
 
 # ── helpers ──────────────────────────────────────────────────────────
@@ -57,12 +146,14 @@ def _prepare_df():
         source_dataset = cleaning_config.get("dataset", "original")
         df = state.get_dataset(source_dataset)
         df = _apply_clean_pipeline(df, cleaning_config)
+        df = add_prediction_targets(df)
         state._cleaned_df = df
         state.cleaning_pipeline = cleaning_config.get("cleaning", [])
         state.set_active_dataset("cleaned")
         print(f"  Cleaned: {len(df)} rows, {len(df.columns)} columns\n")
     else:
         df = state.get_dataset("original")
+        df = add_prediction_targets(df)
     return df
 
 
@@ -126,224 +217,119 @@ def run_time_series(df):
 
 # ── 2. Regression: predict funding / impact ─────────────────────────
 
-REGRESSION_TARGETS = {
-    "funding_usd": "Predict project funding (USD) based on sector and AI technique",
-    "impact_score": "Predict impact score based on sector and AI technique",
-}
+# ── 2. Nexus Insights: Collaboration, Climate, Entry-type evolution ──
 
-# Numeric columns that are safe to use as features (no target leakage)
-SAFE_NUMERIC_FEATURES = [
-    "year",
-    "renewable_energy_share_pct",
-    "venue_h_index",
-    "policy_stringency_score",
-    "co2_reduction_tons",
-    "water_savings_liters",
-    "energy_savings_kwh",
-    "population_served",
-    "innovation_index",
-    "patent_family_size",
-    "investment_roi",
-]
-
-CATEGORICAL_FEATURES = [
-    "sector",
-    "ai_technique",
-    "region",
-    "deployment_scale",
-    "collaboration_type",
-    "water_application",
-    "energy_application",
-    "nexus_focus",
-    "status",
-    "entry_type",
-    "country",
-    "climate_zone",
-    "water_stress_level",
-    "organization",
-    "sdg_alignment",
-    "publication_venue",
-    "open_access",
-    "patent_class",
-    "policy_type",
-    "policy_level",
-    "language",
-]
-
-
-REGRESSION_MODELS = [
-    {
-        "name": "Linear Regression",
-        "cls": "from sklearn.linear_model import LinearRegression",
-        "init": "LinearRegression()",
-    },
-    {
-        "name": "Ridge Regression",
-        "cls": "from sklearn.linear_model import Ridge",
-        "init": "Ridge(alpha=1.0)",
-    },
-    {
-        "name": "Decision Tree",
-        "cls": "from sklearn.tree import DecisionTreeRegressor",
-        "init": "DecisionTreeRegressor(max_depth=12, random_state=42)",
-    },
-    {
-        "name": "Random Forest",
-        "cls": "from sklearn.ensemble import RandomForestRegressor",
-        "init": "RandomForestRegressor(n_estimators=150, max_depth=16, min_samples_leaf=2, random_state=42, n_jobs=-1)",
-    },
-    {
-        "name": "Gradient Boosting",
-        "cls": "from sklearn.ensemble import GradientBoostingRegressor",
-        "init": "GradientBoostingRegressor(n_estimators=150, max_depth=5, learning_rate=0.08, random_state=42)",
-    },
-    {
-        "name": "Neural Network",
-        "cls": "from sklearn.neural_network import MLPRegressor",
-        "init": "MLPRegressor(hidden_layer_sizes=(128, 64), max_iter=200, early_stopping=True, random_state=42)",
-    },
-    {
-        "name": "Ensemble (Voting)",
-        "cls": "from sklearn.ensemble import VotingRegressor, RandomForestRegressor, GradientBoostingRegressor; from sklearn.neural_network import MLPRegressor",
-        "init": "VotingRegressor([('rf', RandomForestRegressor(n_estimators=150, max_depth=16, min_samples_leaf=2, random_state=42, n_jobs=-1)), ('gb', GradientBoostingRegressor(n_estimators=150, max_depth=5, learning_rate=0.08, random_state=42)), ('mlp', MLPRegressor(hidden_layer_sizes=(128, 64), max_iter=200, early_stopping=True, random_state=42))])",
-    },
-]
-
-
-def _train_model(model_def, X_train, y_train):
-    exec(model_def["cls"], globals())
-    model = eval(model_def["init"])
-    model.fit(X_train, y_train)
-    return model
-
-
-def run_regression(df):
-    """Train multiple models per target with scaled y to keep metrics readable."""
+def run_nexus_insights(df):
+    """Aggregate stats for Collaboration Type, Climate/Water stress, Entry Types, and Regional policies."""
     print("─" * 50)
-    print("[2] Regression: Predict funding & impact from sector / technique\n")
-
-    all_results = []
-
-    for target_col, description in REGRESSION_TARGETS.items():
-        print(f"  Target: {target_col} — {description}")
-
-        if target_col not in df.columns:
-            print(f"    Skipping — column not found\n")
-            continue
-
-        feature_cols = [c for c in SAFE_NUMERIC_FEATURES if c in df.columns] + CATEGORICAL_FEATURES
-
-        data = df[feature_cols + [target_col]].dropna().copy()
-        if len(data) < 100:
-            print(f"    Skipping — only {len(data)} rows after dropna\n")
-            continue
-
-        X = data[feature_cols].copy()
-        y = data[target_col].values.astype(float)
-        if target_col == "funding_usd":
-            y = y / 1e6  # Scale target to Millions of USD
-        y_mean, y_std = float(y.mean()), float(y.std())
-
-        num_cols = [c for c in feature_cols if c in SAFE_NUMERIC_FEATURES and c in X.columns]
-        cat_cols = [c for c in CATEGORICAL_FEATURES if c in X.columns]
-
-        for c in num_cols:
-            X[c] = X[c].fillna(X[c].median())
-        for c in cat_cols:
-            X[c] = X[c].fillna("unknown").astype(str)
-
-        enc = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-        encoded = enc.fit_transform(X[cat_cols])
-        enc_cols = [f"{c}_{v}" for c, vs in zip(cat_cols, enc.categories_) for v in vs]
-        X_enc = pd.DataFrame(encoded, columns=enc_cols, index=X.index)
-        X_feat = pd.concat([X[num_cols], X_enc], axis=1)
-
-        if num_cols:
-            scaler = StandardScaler()
-            X_feat[num_cols] = scaler.fit_transform(X_feat[num_cols])
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            X_feat.values, y, test_size=0.2, random_state=42
-        )
-
-        for mdef in REGRESSION_MODELS:
-            try:
-                t0 = time_module.time()
-                model = _train_model(mdef, X_train, y_train)
-                elapsed = time_module.time() - t0
-
-                y_pred = model.predict(X_test)
-                y_train_pred = model.predict(X_train)
-
-                test_metrics = {
-                    "rmse": float(np.sqrt(mean_squared_error(y_test, y_pred))),
-                    "mse": float(mean_squared_error(y_test, y_pred)),
-                    "mae": float(mean_absolute_error(y_test, y_pred)),
-                    "r2": float(r2_score(y_test, y_pred)),
-                    "rmse_pct": float(np.sqrt(mean_squared_error(y_test, y_pred)) / y_mean * 100) if y_mean != 0 else 0,
-                    "mae_pct": float(mean_absolute_error(y_test, y_pred)) / y_mean * 100 if y_mean != 0 else 0,
-                }
-                train_metrics = {
-                    "rmse": float(np.sqrt(mean_squared_error(y_train, y_train_pred))),
-                    "mse": float(mean_squared_error(y_train, y_train_pred)),
-                    "mae": float(mean_absolute_error(y_train, y_train_pred)),
-                    "r2": float(r2_score(y_train, y_train_pred)),
-                }
-
-                entry = {
-                    "model_name": mdef["name"],
-                    "target_col": target_col,
-                    "description": description,
-                    "feature_cols": list(X_feat.columns),
-                    "num_features": X_feat.shape[1],
-                    "train_size": len(X_train),
-                    "test_size": len(X_test),
-                    "train_metrics": train_metrics,
-                    "test_metrics": test_metrics,
-                    "target_stats": {"mean": y_mean, "std": y_std},
-                    "training_time": round(elapsed, 3),
-                    "actual_vs_predicted": {
-                        "actual": y_test.tolist(),
-                        "predicted": y_pred.tolist(),
-                    },
-                }
-
-                if hasattr(model, "feature_importances_"):
-                    fi = list(zip(X_feat.columns, model.feature_importances_))
-                    fi.sort(key=lambda x: -x[1])
-                    entry["feature_importance"] = {
-                        "names": [f[0] for f in fi[:30]],
-                        "values": [f[1] for f in fi[:30]],
-                    }
-                elif hasattr(model, "coef_"):
-                    coefs = model.coef_.flatten() if len(model.coef_.shape) > 1 else model.coef_
-                    ci = list(zip(X_feat.columns, np.abs(coefs)))
-                    ci.sort(key=lambda x: -x[1])
-                    entry["feature_importance"] = {
-                        "names": [f[0] for f in ci[:30]],
-                        "values": [float(f[1]) for f in ci[:30]],
-                    }
-
-                rid = _save("ml_model", entry)
-                all_results.append(entry)
-
-                r2 = test_metrics["r2"]
-                rmse_pct = test_metrics.get("rmse_pct", 0)
-                print(f"    {mdef['name']:20s}  R²={r2:.4f}  "
-                      f"RMSE={test_metrics['rmse']:.1f} ({rmse_pct:.1f}% of mean)  "
-                      f"({elapsed:.1f}s)")
-
-            except Exception as e:
-                print(f"    ✗ {mdef['name']:20s}  failed — {e}")
-                all_results.append({
-                    "model_name": mdef["name"],
-                    "target_col": target_col,
-                    "error": str(e),
-                })
-
-        print()
-
-    return all_results
+    print("[2] Nexus Insights: Collaboration, Climate-smart, Entry-type evolution\n")
+    
+    col_perf = []
+    if "collaboration_type" in df.columns:
+        impact = pd.to_numeric(df["impact_score"], errors="coerce").fillna(df["impact_score"].median() if "impact_score" in df.columns else 5.0)
+        roi = pd.to_numeric(df["investment_roi"], errors="coerce").fillna(df["investment_roi"].median() if "investment_roi" in df.columns else 1.0)
+        temp_df = df.copy()
+        temp_df["impact_score"] = impact
+        temp_df["investment_roi"] = roi
+        
+        grouped = temp_df.groupby("collaboration_type")
+        for name, group in grouped:
+            col_perf.append({
+                "type": str(name),
+                "avg_impact": round(float(group["impact_score"].mean()), 2),
+                "avg_roi": round(float(group["investment_roi"].mean()), 2),
+                "count": int(len(group))
+            })
+            
+    climate_deploy = []
+    if "water_stress_level" in df.columns and "ai_technique" in df.columns:
+        top_techs = df["ai_technique"].value_counts().head(6).index.tolist()
+        stress_levels = ["Low", "Low-Medium", "Medium-High", "High", "Extremely High"]
+        valid_stress = [l for l in stress_levels if l in df["water_stress_level"].unique()]
+        
+        for lvl in valid_stress:
+            lvl_df = df[df["water_stress_level"] == lvl]
+            counts = {"stress_level": lvl}
+            for tech in top_techs:
+                cnt = int(sum(lvl_df["ai_technique"] == tech))
+                counts[tech] = cnt
+            climate_deploy.append(counts)
+            
+    entry_evo = []
+    if "year" in df.columns and "entry_type" in df.columns:
+        years = sorted(df["year"].dropna().unique().tolist())
+        entry_types = ["Publication", "Project", "Patent", "Policy"]
+        for yr in years:
+            yr_df = df[df["year"] == yr]
+            counts = {"year": int(yr)}
+            for et in entry_types:
+                cnt = int(sum(yr_df["entry_type"] == et))
+                counts[et] = cnt
+            entry_evo.append(counts)
+            
+    regional_insights = []
+    if "region" in df.columns:
+        temp_df = df.copy()
+        if "policy_stringency_score" in temp_df.columns:
+            temp_df["policy_stringency_score"] = pd.to_numeric(temp_df["policy_stringency_score"], errors="coerce").fillna(0.0)
+        else:
+            temp_df["policy_stringency_score"] = 0.0
+            
+        if "open_access" in temp_df.columns:
+            temp_df["is_open_access"] = temp_df["open_access"].fillna("No").astype(str).str.strip().str.lower().isin(["yes", "green oa", "gold oa"])
+        else:
+            temp_df["is_open_access"] = False
+            
+        grouped = temp_df.groupby("region")
+        for name, group in grouped:
+            oa_rate = float(group["is_open_access"].mean()) if len(group) > 0 else 0.0
+            regional_insights.append({
+                "region": str(name),
+                "avg_policy_stringency": round(float(group["policy_stringency_score"].mean()), 2),
+                "open_access_rate": round(oa_rate * 100, 2),
+                "count": int(len(group))
+            })
+            
+    resource_savings = []
+    if "ai_technique" in df.columns:
+        temp_df = df.copy()
+        if "co2_reduction_tons" in temp_df.columns:
+            temp_df["co2_reduction_tons"] = pd.to_numeric(temp_df["co2_reduction_tons"], errors="coerce").fillna(0.0)
+        else:
+            temp_df["co2_reduction_tons"] = 0.0
+            
+        if "water_savings_liters" in temp_df.columns:
+            temp_df["water_savings_liters"] = pd.to_numeric(temp_df["water_savings_liters"], errors="coerce").fillna(0.0)
+        else:
+            temp_df["water_savings_liters"] = 0.0
+            
+        if "energy_savings_kwh" in temp_df.columns:
+            temp_df["energy_savings_kwh"] = pd.to_numeric(temp_df["energy_savings_kwh"], errors="coerce").fillna(0.0)
+        else:
+            temp_df["energy_savings_kwh"] = 0.0
+            
+        grouped = temp_df.groupby("ai_technique")
+        for name, group in grouped:
+            resource_savings.append({
+                "technique": str(name),
+                "avg_co2_reduction": round(float(group["co2_reduction_tons"].mean()), 2),
+                "avg_water_savings": round(float(group["water_savings_liters"].mean()), 2),
+                "avg_energy_savings": round(float(group["energy_savings_kwh"].mean()), 2),
+                "count": int(len(group))
+            })
+        resource_savings.sort(key=lambda x: x["count"], reverse=True)
+            
+    summary = {
+        "collaboration_impact": col_perf,
+        "climate_deployments": climate_deploy,
+        "entry_type_evolution": entry_evo,
+        "regional_policy_openness": regional_insights,
+        "resource_savings_by_tech": resource_savings
+    }
+    
+    rid = _save("nexus_insights", summary)
+    print(f"  Saved Nexus Insights → {rid}\n")
+    return summary
 
 
 # ── 3. NLP: Topic modeling ──────────────────────────────────────────
@@ -494,12 +480,12 @@ def run_nlp(df):
     return entry
 
 
-# ── 4. SDG Alignment analysis ───────────────────────────────────────
+# ── 4. SDG Alignment Analysis ────────────────────────────────────────
 
 def run_sdg_analysis(df):
-    """Cross-tabulation between AI techniques / sectors and SDG alignment."""
+    """Analyze SDG alignment distribution, co-occurrences, intersect coordinates, and synergy scores."""
     print("─" * 50)
-    print("[4] SDG Alignment: technique ↔ SDG correlation\n")
+    print("[4] SDG Alignment & Portfolio Focus Analysis\n")
 
     if "sdg_alignment" not in df.columns:
         print("  No sdg_alignment column — skipping\n")
@@ -509,49 +495,124 @@ def run_sdg_analysis(df):
     df = df.copy()
     df["sdg_alignment"] = df["sdg_alignment"].fillna("Unknown").astype(str).str.strip()
 
-    # Cross-tab: ai_technique x sdg_alignment
-    results = {}
-    for col, label in [("ai_technique", "AI Technique"), ("sector", "Sector")]:
-        if col not in df.columns:
-            continue
-
-        ct = pd.crosstab(df[col], df["sdg_alignment"])
-        chi2, p, dof, expected = chi2_contingency(ct.values)
-
-        # Normalize to row percentages
-        ct_pct = ct.div(ct.sum(axis=1), axis=0).round(4)
-
-        # Top association per category
-        top_per_category = {}
-        for idx in ct_pct.index:
-            vals = ct_pct.loc[idx].sort_values(ascending=False)
-            top_per_category[str(idx)] = {
-                "primary_sdg": vals.index[0],
-                "primary_share": float(vals.iloc[0]),
-                "top_3": [(str(k), float(v)) for k, v in vals.head(3).items()],
-            }
-
-        results[label] = {
-            "chi2_statistic": round(float(chi2), 2),
-            "p_value": float(p),
-            "degrees_of_freedom": int(dof),
-            "significant": bool(p < 0.05),
-            "categories": top_per_category,
+    import re as _re
+    # Extract primary SDG
+    df["primary_sdg"] = df["sdg_alignment"].apply(lambda v: _re.search(r"SDG\s*\d+", v).group(0) if _re.search(r"SDG\s*\d+", v) else "Other")
+    
+    # SDG co-occurrence Jaccard matrix
+    sdg_lists = df["sdg_alignment"].apply(lambda val: _re.findall(r"SDG\s*\d+", val))
+    unique_sdgs = sorted(list(set([sdg for lst in sdg_lists for sdg in lst if sdg != "Unknown"])))
+    
+    sdg_cooccurrence = []
+    for sdg1 in unique_sdgs:
+        for sdg2 in unique_sdgs:
+            if sdg1 >= sdg2:
+                continue
+            entries_with_sdg1 = set(df.index[sdg_lists.apply(lambda x: sdg1 in x)])
+            entries_with_sdg2 = set(df.index[sdg_lists.apply(lambda x: sdg2 in x)])
+            overlap = len(entries_with_sdg1 & entries_with_sdg2)
+            if overlap > 0:
+                total = len(entries_with_sdg1 | entries_with_sdg2)
+                sdg_cooccurrence.append({
+                    "pair": f"{sdg1} + {sdg2}",
+                    "sdg1": sdg1,
+                    "sdg2": sdg2,
+                    "count": overlap,
+                    "jaccard": round(overlap / total, 4) if total > 0 else 0.0
+                })
+                
+    # Technique Intersect Coordinates
+    coords = []
+    if "ai_technique" in df.columns:
+        top_techs = df["ai_technique"].value_counts().head(15).index.tolist()
+        for tech in top_techs:
+            tech_df = df[df["ai_technique"] == tech]
+            total_tech = len(tech_df)
+            if total_tech > 0:
+                sdg6_cnt = sum(tech_df["sdg_alignment"].str.contains("SDG 6", regex=False))
+                sdg7_cnt = sum(tech_df["sdg_alignment"].str.contains("SDG 7", regex=False))
+                coords.append({
+                    "technique": str(tech),
+                    "sdg6_share": round(sdg6_cnt / total_tech, 4),
+                    "sdg7_share": round(sdg7_cnt / total_tech, 4)
+                })
+                
+    # SDG Outcomes averages
+    sdg_outcomes = []
+    exploded = df.assign(
+        sdg=sdg_lists.apply(lambda values: values if values else ["Other"])
+    ).explode("sdg").reset_index(drop=True)
+    exploded = exploded[exploded["sdg"] != "Unknown"].copy()
+    
+    numeric_metrics = {
+        "project_value_score": "avg_project_value_score",
+        "resource_efficiency_score": "avg_resource_efficiency_score",
+        "funding_usd": "avg_funding",
+        "co2_reduction_tons": "avg_co2_reduction",
+        "impact_score": "avg_impact",
+    }
+    
+    for sdg, group in exploded.groupby("sdg"):
+        outcome = {
+            "sdg": str(sdg),
+            "entries": int(len(group)),
         }
-
-        n_sig = sum(1 for v in top_per_category.values() if v["primary_share"] > 0.3)
-        print(f"  {label} × SDG: χ²={results[label]['chi2_statistic']}, "
-              f"p={results[label]['p_value']:.4f} "
-              f"({'significant' if p < 0.05 else 'not significant'})")
-        print(f"    {n_sig}/{len(top_per_category)} categories have a dominant SDG (>30%)\n")
+        for col, key in numeric_metrics.items():
+            if col in group.columns:
+                vals = pd.to_numeric(group[col], errors="coerce")
+                if col == "funding_usd":
+                    outcome[key] = round(float(vals.mean() / 1e6), 2) if vals.notna().any() else 0.0
+                else:
+                    outcome[key] = round(float(vals.mean()), 2) if vals.notna().any() else 0.0
+            else:
+                outcome[key] = 0.0
+        sdg_outcomes.append(outcome)
+    sdg_outcomes.sort(key=lambda r: r["entries"], reverse=True)
+    
+    # SDG Synergy statistics
+    synergy_data = []
+    df["num_sdgs"] = sdg_lists.apply(len)
+    single_sdg = df[df["num_sdgs"] == 1]
+    multi_sdg = df[df["num_sdgs"] > 1]
+    
+    for label, group in [("Single Goal", single_sdg), ("Multi-Goal (Synergy)", multi_sdg)]:
+        if len(group) > 0:
+            avg_impact = float(group["impact_score"].mean()) if "impact_score" in group.columns else 0.0
+            avg_eff = float(group["resource_efficiency_score"].mean()) if "resource_efficiency_score" in group.columns else 0.0
+            synergy_data.append({
+                "group": label,
+                "avg_impact": round(avg_impact, 2),
+                "avg_resource_efficiency": round(avg_eff, 2),
+                "count": int(len(group))
+            })
+            
+    technique_sdg_heatmap = []
+    if "ai_technique" in exploded.columns:
+        ct_raw = pd.crosstab(exploded["ai_technique"], exploded["sdg"])
+        ct_norm = ct_raw.div(ct_raw.sum(axis=1), axis=0).round(4)
+        for tech in ct_norm.index:
+            for sdg in ct_norm.columns:
+                val = float(ct_norm.loc[tech, sdg])
+                if val > 0.01:
+                    technique_sdg_heatmap.append({
+                        "technique": str(tech),
+                        "sdg": str(sdg),
+                        "share": val,
+                        "count": int(ct_raw.loc[tech, sdg]),
+                    })
 
     entry = {
-        "method": "chi-square test of independence + row percentages",
-        "results": results,
+        "method": "Jaccard Co-occurrence + Technique Intersect Mapping",
+        "cooccurrences": sdg_cooccurrence,
+        "intersect_coordinates": coords,
+        "sdg_outcomes": sdg_outcomes,
+        "synergy": synergy_data,
+        "technique_sdg_heatmap": technique_sdg_heatmap,
+        "unique_sdgs": unique_sdgs
     }
 
     rid = _save("sdg_analysis", entry)
-    print(f"  Saved → {rid}\n")
+    print(f"  Saved SDG Analysis → {rid}\n")
     return entry
 
 
@@ -564,7 +625,7 @@ def main():
     print(f"Dataset: {len(df)} rows × {len(df.columns)} columns\n")
 
     run_time_series(df)
-    run_regression(df)
+    run_nexus_insights(df)
     # NLP needs text columns that cleaning drops — use original
     run_nlp(state.get_dataset("original"))
     run_sdg_analysis(df)

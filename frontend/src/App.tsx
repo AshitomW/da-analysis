@@ -5,7 +5,7 @@ import DataExplorer from './pages/DataExplorer'
 import DataQuality from './pages/DataQuality'
 import Clean from './pages/Clean'
 import Analyze from './pages/Analyze'
-import MLModels from './pages/MLModels'
+import ResearchModeling from './pages/ResearchModeling'
 
 export default function App() {
   return (
@@ -17,7 +17,7 @@ export default function App() {
           <Route path="/quality" element={<DataQuality />} />
           <Route path="/clean" element={<Clean />} />
           <Route path="/analyze" element={<Analyze />} />
-          <Route path="/ml-models" element={<MLModels />} />
+          <Route path="/research-modeling" element={<ResearchModeling />} />
         </Route>
       </Routes>
     </BrowserRouter>
