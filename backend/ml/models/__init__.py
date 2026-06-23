@@ -5,3 +5,4 @@ from . import gradient_boosting
 from . import neural_network
 from . import ensemble_voting
 from . import kmeans
+from . import xgboost

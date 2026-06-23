@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
+import { api } from '../api/client'
 import {
   LayoutDashboard, Table, BarChart3, Brain,
-  FlaskConical, Sparkles, Droplets,
+  FlaskConical, Sparkles, Droplets, Database
 } from 'lucide-react'
 
 const links = [
@@ -14,6 +16,29 @@ const links = [
 ]
 
 export default function Sidebar() {
+  const [activeDataset, setActiveDataset] = useState<string>('original')
+
+  useEffect(() => {
+    api.get<{ active_dataset: string }>('/data/status')
+      .then((res) => {
+        if (res?.active_dataset) {
+          setActiveDataset(res.active_dataset)
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const handleDatasetChange = (val: string) => {
+    setActiveDataset(val)
+    api.post('/data/set-active', { dataset: val })
+      .then(() => {
+        window.location.reload()
+      })
+      .catch((err) => {
+        console.error("Failed to change dataset", err)
+      })
+  }
+
   return (
     <aside className="w-56 flex-shrink-0 border-r border-border bg-bg flex flex-col h-screen">
       <div className="px-5 py-5 border-b border-border">
@@ -46,6 +71,20 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <div className="px-4 py-4 border-t border-border space-y-2">
+        <label className="text-[10px] font-semibold text-text-muted uppercase tracking-label flex items-center gap-1.5">
+          <Database size={11} /> Dataset
+        </label>
+        <select
+          value={activeDataset}
+          onChange={(e) => handleDatasetChange(e.target.value)}
+          className="w-full text-xs bg-surface border border-border rounded px-2.5 py-1.5 text-text-primary focus:outline-none focus:ring-1 focus:ring-accent cursor-pointer"
+        >
+          <option value="original">Original (Raw)</option>
+          <option value="cleaned">Cleaned (Filtered)</option>
+          <option value="extended">Extended (Synthetic)</option>
+        </select>
+      </div>
       <div className="px-5 py-3 border-t border-border">
         <span className="text-[11px] font-medium text-text-muted uppercase tracking-label">Nexus v1.0</span>
       </div>

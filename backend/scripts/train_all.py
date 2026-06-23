@@ -131,97 +131,45 @@ REGRESSION_TARGETS = {
     "impact_score": "Predict impact score based on sector and AI technique",
 }
 
-# Numeric columns that are safe to use as features (no target leakage)
-SAFE_NUMERIC_FEATURES = [
-    "year",
-    "renewable_energy_share_pct",
-    "venue_h_index",
-    "policy_stringency_score",
-    "co2_reduction_tons",
-    "water_savings_liters",
-    "energy_savings_kwh",
-    "population_served",
-    "innovation_index",
-    "patent_family_size",
-    "investment_roi",
-]
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, VotingRegressor
+from sklearn.neural_network import MLPRegressor
+from xgboost import XGBRegressor
+from sklearn.model_selection import GridSearchCV
 
-CATEGORICAL_FEATURES = [
-    "sector",
-    "ai_technique",
-    "region",
-    "deployment_scale",
-    "collaboration_type",
-    "water_application",
-    "energy_application",
-    "nexus_focus",
-    "status",
-    "entry_type",
-    "country",
-    "climate_zone",
-    "water_stress_level",
-    "organization",
-    "sdg_alignment",
-    "publication_venue",
-    "open_access",
-    "patent_class",
-    "policy_type",
-    "policy_level",
-    "language",
-]
+SKLEARN_ESTIMATORS = {
+    "Linear Regression": LinearRegression,
+    "Ridge Regression": Ridge,
+    "Decision Tree": DecisionTreeRegressor,
+    "Random Forest": RandomForestRegressor,
+    "Gradient Boosting": GradientBoostingRegressor,
+    "XGBoost": XGBRegressor,
+    "Neural Network": MLPRegressor,
+}
 
-
-REGRESSION_MODELS = [
-    {
-        "name": "Linear Regression",
-        "cls": "from sklearn.linear_model import LinearRegression",
-        "init": "LinearRegression()",
-    },
-    {
-        "name": "Ridge Regression",
-        "cls": "from sklearn.linear_model import Ridge",
-        "init": "Ridge(alpha=1.0)",
-    },
-    {
-        "name": "Decision Tree",
-        "cls": "from sklearn.tree import DecisionTreeRegressor",
-        "init": "DecisionTreeRegressor(max_depth=12, random_state=42)",
-    },
-    {
-        "name": "Random Forest",
-        "cls": "from sklearn.ensemble import RandomForestRegressor",
-        "init": "RandomForestRegressor(n_estimators=150, max_depth=16, min_samples_leaf=2, random_state=42, n_jobs=-1)",
-    },
-    {
-        "name": "Gradient Boosting",
-        "cls": "from sklearn.ensemble import GradientBoostingRegressor",
-        "init": "GradientBoostingRegressor(n_estimators=150, max_depth=5, learning_rate=0.08, random_state=42)",
-    },
-    {
-        "name": "Neural Network",
-        "cls": "from sklearn.neural_network import MLPRegressor",
-        "init": "MLPRegressor(hidden_layer_sizes=(128, 64), max_iter=200, early_stopping=True, random_state=42)",
-    },
-    {
-        "name": "Ensemble (Voting)",
-        "cls": "from sklearn.ensemble import VotingRegressor, RandomForestRegressor, GradientBoostingRegressor; from sklearn.neural_network import MLPRegressor",
-        "init": "VotingRegressor([('rf', RandomForestRegressor(n_estimators=150, max_depth=16, min_samples_leaf=2, random_state=42, n_jobs=-1)), ('gb', GradientBoostingRegressor(n_estimators=150, max_depth=5, learning_rate=0.08, random_state=42)), ('mlp', MLPRegressor(hidden_layer_sizes=(128, 64), max_iter=200, early_stopping=True, random_state=42))])",
-    },
-]
-
-
-def _train_model(model_def, X_train, y_train):
-    exec(model_def["cls"], globals())
-    model = eval(model_def["init"])
-    model.fit(X_train, y_train)
-    return model
-
+def _load_models_config():
+    path = os.path.join(backend_dir, "ml", "models_config.yaml")
+    if os.path.exists(path):
+        import yaml
+        with open(path) as f:
+            return yaml.safe_load(f)
+    return None
 
 def run_regression(df):
-    """Train multiple models per target with scaled y to keep metrics readable."""
+    """Train multiple models per target with scaled y and hyperparameter tuning."""
     print("─" * 50)
     print("[2] Regression: Predict funding & impact from sector / technique\n")
 
+    models_config = _load_models_config()
+    enabled_models = {}
+    exclude_cols = set()
+
+    if models_config:
+        enabled_models = models_config.get("models", {})
+        if "targets" in models_config and "exclude" in models_config["targets"]:
+            exclude_cols = set(models_config["targets"]["exclude"])
+    
     all_results = []
 
     for target_col, description in REGRESSION_TARGETS.items():
@@ -231,7 +179,15 @@ def run_regression(df):
             print(f"    Skipping — column not found\n")
             continue
 
-        feature_cols = [c for c in SAFE_NUMERIC_FEATURES if c in df.columns] + CATEGORICAL_FEATURES
+        # Exclude targets and configuration-specified noise columns
+        exclude = set(exclude_cols)
+        exclude.add(target_col)
+        if target_col == "funding_usd":
+            exclude.add("impact_score")
+        elif target_col == "impact_score":
+            exclude.discard("funding_usd")
+
+        feature_cols = [c for c in df.columns if c not in exclude]
 
         data = df[feature_cols + [target_col]].dropna().copy()
         if len(data) < 100:
@@ -244,8 +200,14 @@ def run_regression(df):
             y = y / 1e6  # Scale target to Millions of USD
         y_mean, y_std = float(y.mean()), float(y.std())
 
-        num_cols = [c for c in feature_cols if c in SAFE_NUMERIC_FEATURES and c in X.columns]
-        cat_cols = [c for c in CATEGORICAL_FEATURES if c in X.columns]
+        # Classify features dynamically
+        num_cols = []
+        cat_cols = []
+        for c in feature_cols:
+            if pd.api.types.is_numeric_dtype(X[c]):
+                num_cols.append(c)
+            else:
+                cat_cols.append(c)
 
         for c in num_cols:
             X[c] = X[c].fillna(X[c].median())
@@ -266,11 +228,54 @@ def run_regression(df):
             X_feat.values, y, test_size=0.2, random_state=42
         )
 
-        for mdef in REGRESSION_MODELS:
+        best_estimators = {}
+
+        for mname, mconfig in enabled_models.items():
+            if not mconfig.get("enabled", True):
+                continue
+            if mname == "Ensemble (Voting)" or mname == "K-Means Clustering":
+                continue
+
+            est_class = SKLEARN_ESTIMATORS.get(mname)
+            if not est_class:
+                print(f"    Skipping {mname} — estimator class not found")
+                continue
+
             try:
                 t0 = time_module.time()
-                model = _train_model(mdef, X_train, y_train)
+                params = mconfig.get("params", {})
+                tuning_grid = mconfig.get("tuning_grid", None)
+
+                # Ensure parameters have the correct types
+                if "max_depth" in params and params["max_depth"] is not None:
+                    params["max_depth"] = int(params["max_depth"])
+                if "n_estimators" in params:
+                    params["n_estimators"] = int(params["n_estimators"])
+                if "learning_rate" in params:
+                    params["learning_rate"] = float(params["learning_rate"])
+                if "random_state" in params:
+                    params["random_state"] = int(params["random_state"])
+
+                if tuning_grid:
+                    print(f"    Tuning {mname} using GridSearchCV...")
+                    grid_search = GridSearchCV(
+                        estimator=est_class(random_state=params.get("random_state", 42)) if "random_state" in est_class().get_params() else est_class(),
+                        param_grid=tuning_grid,
+                        cv=3,
+                        scoring="r2",
+                        n_jobs=-1
+                    )
+                    grid_search.fit(X_train, y_train)
+                    model = grid_search.best_estimator_
+                    best_params = grid_search.best_params_
+                    print(f"      Best Parameters: {best_params}")
+                else:
+                    model = est_class(**params)
+                    model.fit(X_train, y_train)
+                    best_params = params
+
                 elapsed = time_module.time() - t0
+                best_estimators[mname] = model
 
                 y_pred = model.predict(X_test)
                 y_train_pred = model.predict(X_train)
@@ -291,13 +296,14 @@ def run_regression(df):
                 }
 
                 entry = {
-                    "model_name": mdef["name"],
+                    "model_name": mname,
                     "target_col": target_col,
                     "description": description,
                     "feature_cols": list(X_feat.columns),
                     "num_features": X_feat.shape[1],
                     "train_size": len(X_train),
                     "test_size": len(X_test),
+                    "params": best_params,
                     "train_metrics": train_metrics,
                     "test_metrics": test_metrics,
                     "target_stats": {"mean": y_mean, "std": y_std},
@@ -313,7 +319,7 @@ def run_regression(df):
                     fi.sort(key=lambda x: -x[1])
                     entry["feature_importance"] = {
                         "names": [f[0] for f in fi[:30]],
-                        "values": [f[1] for f in fi[:30]],
+                        "values": [float(f[1]) for f in fi[:30]],
                     }
                 elif hasattr(model, "coef_"):
                     coefs = model.coef_.flatten() if len(model.coef_.shape) > 1 else model.coef_
@@ -329,17 +335,151 @@ def run_regression(df):
 
                 r2 = test_metrics["r2"]
                 rmse_pct = test_metrics.get("rmse_pct", 0)
-                print(f"    {mdef['name']:20s}  R²={r2:.4f}  "
+                print(f"    {mname:20s}  R²={r2:.4f}  "
                       f"RMSE={test_metrics['rmse']:.1f} ({rmse_pct:.1f}% of mean)  "
                       f"({elapsed:.1f}s)")
 
             except Exception as e:
-                print(f"    ✗ {mdef['name']:20s}  failed — {e}")
+                import traceback
+                traceback.print_exc()
+                print(f"    ✗ {mname:20s}  failed — {e}")
                 all_results.append({
-                    "model_name": mdef["name"],
+                    "model_name": mname,
                     "target_col": target_col,
                     "error": str(e),
                 })
+
+        # Train Ensemble (Voting) if enabled
+        voting_config = enabled_models.get("Ensemble (Voting)", {})
+        if voting_config.get("enabled", True) and len(best_estimators) >= 2:
+            print("  Training Ensemble (Voting) using tuned base estimators...")
+            t0 = time_module.time()
+            estimators_list = [(name, est) for name, est in best_estimators.items() 
+                               if name in ["Random Forest", "Gradient Boosting", "XGBoost", "Neural Network"]]
+            if len(estimators_list) >= 2:
+                try:
+                    voting_model = VotingRegressor(estimators_list)
+                    voting_model.fit(X_train, y_train)
+                    elapsed = time_module.time() - t0
+                    
+                    y_pred = voting_model.predict(X_test)
+                    y_train_pred = voting_model.predict(X_train)
+
+                    test_metrics = {
+                        "rmse": float(np.sqrt(mean_squared_error(y_test, y_pred))),
+                        "mse": float(mean_squared_error(y_test, y_pred)),
+                        "mae": float(mean_absolute_error(y_test, y_pred)),
+                        "r2": float(r2_score(y_test, y_pred)),
+                        "rmse_pct": float(np.sqrt(mean_squared_error(y_test, y_pred)) / y_mean * 100) if y_mean != 0 else 0,
+                        "mae_pct": float(mean_absolute_error(y_test, y_pred)) / y_mean * 100 if y_mean != 0 else 0,
+                    }
+                    train_metrics = {
+                        "rmse": float(np.sqrt(mean_squared_error(y_train, y_train_pred))),
+                        "mse": float(mean_squared_error(y_train, y_train_pred)),
+                        "mae": float(mean_absolute_error(y_train, y_train_pred)),
+                        "r2": float(r2_score(y_train, y_train_pred)),
+                    }
+
+                    entry = {
+                        "model_name": "Ensemble (Voting)",
+                        "target_col": target_col,
+                        "description": description,
+                        "feature_cols": list(X_feat.columns),
+                        "num_features": X_feat.shape[1],
+                        "train_size": len(X_train),
+                        "test_size": len(X_test),
+                        "params": {"estimators": [name for name, _ in estimators_list]},
+                        "train_metrics": train_metrics,
+                        "test_metrics": test_metrics,
+                        "target_stats": {"mean": y_mean, "std": y_std},
+                        "training_time": round(elapsed, 3),
+                        "actual_vs_predicted": {
+                            "actual": y_test.tolist(),
+                            "predicted": y_pred.tolist(),
+                        },
+                    }
+                    
+                    # Estimate feature importances by averaging base estimators importances
+                    importances = np.zeros(X_feat.shape[1])
+                    count_fi = 0
+                    for _, est in estimators_list:
+                        if hasattr(est, "feature_importances_"):
+                            importances += est.feature_importances_
+                            count_fi += 1
+                    if count_fi > 0:
+                        importances /= count_fi
+                        fi = list(zip(X_feat.columns, importances))
+                        fi.sort(key=lambda x: -x[1])
+                        entry["feature_importance"] = {
+                            "names": [f[0] for f in fi[:30]],
+                            "values": [float(f[1]) for f in fi[:30]],
+                        }
+                    
+                    rid = _save("ml_model", entry)
+                    all_results.append(entry)
+                    r2 = test_metrics["r2"]
+                    print(f"    Ensemble (Voting)    R²={r2:.4f}  RMSE={test_metrics['rmse']:.1f}  ({elapsed:.1f}s)")
+                except Exception as e:
+                    print(f"    ✗ Ensemble (Voting)  failed — {e}")
+
+        # Train K-Means Clustering Regressor if enabled
+        kmeans_config = enabled_models.get("K-Means Clustering", {})
+        if kmeans_config.get("enabled", False):
+            from ml.models.kmeans import KMeansRegressor
+            print("  Training K-Means Clustering Regressor...")
+            try:
+                t0 = time_module.time()
+                params = kmeans_config.get("params", {"n_clusters": 5})
+                model = KMeansRegressor(
+                    n_clusters=int(params.get("n_clusters", 5)),
+                    random_state=int(params.get("random_state", 42)),
+                    n_init=int(params.get("n_init", 10))
+                )
+                model.fit(X_train, y_train)
+                elapsed = time_module.time() - t0
+                
+                y_pred = model.predict(X_test)
+                y_train_pred = model.predict(X_train)
+
+                test_metrics = {
+                    "rmse": float(np.sqrt(mean_squared_error(y_test, y_pred))),
+                    "mse": float(mean_squared_error(y_test, y_pred)),
+                    "mae": float(mean_absolute_error(y_test, y_pred)),
+                    "r2": float(r2_score(y_test, y_pred)),
+                    "rmse_pct": float(np.sqrt(mean_squared_error(y_test, y_pred)) / y_mean * 100) if y_mean != 0 else 0,
+                    "mae_pct": float(mean_absolute_error(y_test, y_pred)) / y_mean * 100 if y_mean != 0 else 0,
+                }
+                train_metrics = {
+                    "rmse": float(np.sqrt(mean_squared_error(y_train, y_train_pred))),
+                    "mse": float(mean_squared_error(y_train, y_train_pred)),
+                    "mae": float(mean_absolute_error(y_train, y_train_pred)),
+                    "r2": float(r2_score(y_train, y_train_pred)),
+                }
+
+                entry = {
+                    "model_name": "K-Means Clustering",
+                    "target_col": target_col,
+                    "description": description,
+                    "feature_cols": list(X_feat.columns),
+                    "num_features": X_feat.shape[1],
+                    "train_size": len(X_train),
+                    "test_size": len(X_test),
+                    "params": params,
+                    "train_metrics": train_metrics,
+                    "test_metrics": test_metrics,
+                    "target_stats": {"mean": y_mean, "std": y_std},
+                    "training_time": round(elapsed, 3),
+                    "actual_vs_predicted": {
+                        "actual": y_test.tolist(),
+                        "predicted": y_pred.tolist(),
+                    },
+                }
+                rid = _save("ml_model", entry)
+                all_results.append(entry)
+                r2 = test_metrics["r2"]
+                print(f"    K-Means Clustering   R²={r2:.4f}  RMSE={test_metrics['rmse']:.1f}  ({elapsed:.1f}s)")
+            except Exception as e:
+                print(f"    ✗ K-Means Clustering failed — {e}")
 
         print()
 

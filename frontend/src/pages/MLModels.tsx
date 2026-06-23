@@ -181,10 +181,11 @@ function TimeSeriesSection({ data }: { data: any }) {
 
 const MODEL_COLORS: Record<string, string> = {
   'Linear Regression': '#3B82F6',
-  'Ridge Regression': '#10B981',
+  'Ridge Regression': '#84CC16',
   'Decision Tree': '#F59E0B',
   'Random Forest': '#6366F1',
   'Gradient Boosting': '#8B5CF6',
+  'XGBoost': '#10B981',
   'Neural Network': '#EC4899',
   'Ensemble (Voting)': '#F43F5E',
 }

@@ -93,22 +93,52 @@ class AppState:
 
     def auto_clean(self) -> pd.DataFrame:
         df = self._original_df.copy()
+        
+        # 1. First fix categorical placeholders for sparse domain columns before any numerical imputation
+        domain_sparse_cols = {
+            "policy_type": "not_policy",
+            "policy_level": "not_policy",
+            "policy_stringency_score": "not_policy",
+            "patent_class": "no_patent",
+            "patent_family_size": "no_patent",
+            "publication_venue": "no_publication",
+            "open_access": "no_publication",
+        }
+        for col, placeholder in domain_sparse_cols.items():
+            if col in df.columns:
+                df[col] = df[col].replace(r"^\s*$", pd.NA, regex=True)
+                df[col] = df[col].fillna(placeholder)
+
+        # 2. Add missingness indicators
+        if "investment_roi" in df.columns:
+            df["has_investment_roi"] = df["investment_roi"].notna().astype(int)
+        if "population_served" in df.columns:
+            df["serves_population"] = df["population_served"].notna().astype(int)
+        savings_cols = ["co2_reduction_tons", "water_savings_liters", "energy_savings_kwh"]
+        existing_savings = [c for c in savings_cols if c in df.columns]
+        if existing_savings:
+            df["has_savings"] = df[existing_savings].notna().any(axis=1).astype(int)
+
         drop_cols = ['entry_id', 'title', 'abstract_summary', 'keywords']
         df = df.drop(columns=[c for c in drop_cols if c in df.columns])
+        
         for c in df.select_dtypes(include="number").columns:
             df[c] = df[c].fillna(df[c].median())
+            
         for c in df.select_dtypes(exclude="number").columns:
             placeholder = _categorical_placeholder(c)
             df[c] = df[c].replace(r"^\s*$", pd.NA, regex=True)
-            if c in {"policy_type", "policy_level", "policy_stringency_score", "patent_class", "patent_family_size", "publication_venue", "open_access"}:
-                df[c] = df[c].fillna(placeholder)
+            if c in domain_sparse_cols:
+                continue
             else:
                 df[c] = df[c].fillna(df[c].mode().iloc[0] if not df[c].mode().empty else placeholder)
+                
         num_cols = df.select_dtypes(include="number").columns
         for c in num_cols:
             q1, q3 = df[c].quantile(0.25), df[c].quantile(0.75)
             iqr = q3 - q1
             df = df[(df[c] >= q1 - 1.5 * iqr) & (df[c] <= q3 + 1.5 * iqr)]
+            
         self._cleaned_df = df
         self.cleaning_pipeline = [{"operation": "auto_clean"}]
         return df

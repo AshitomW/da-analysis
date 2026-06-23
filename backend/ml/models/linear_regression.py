@@ -1,4 +1,4 @@
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import numpy as np
 import time
@@ -18,6 +18,44 @@ class LinearRegressionModel(BaseModel):
     def train(self, X, y, params):
         t0 = time.time()
         model = LinearRegression(**params)
+        model.fit(X, y)
+        t = time.time() - t0
+        preds = model.predict(X)
+        return {
+            "model": model,
+            "metrics": {
+                "rmse": float(np.sqrt(mean_squared_error(y, preds))),
+                "mse": float(mean_squared_error(y, preds)),
+                "mae": float(mean_absolute_error(y, preds)),
+                "r2": float(r2_score(y, preds)),
+            },
+            "training_time": round(t, 3),
+            "coefficients": model.coef_.tolist() if hasattr(model, "coef_") else [],
+            "intercept": float(model.intercept_) if hasattr(model, "intercept_") else 0,
+        }
+
+    def predict(self, model, X):
+        return model.predict(X)
+
+
+@register
+class RidgeRegressionModel(BaseModel):
+    name = "Ridge Regression"
+    description = "Linear regression with L2 regularization"
+    category = "regression"
+
+    def get_default_params(self):
+        return {"alpha": 1.0, "fit_intercept": True}
+
+    def train(self, X, y, params):
+        t0 = time.time()
+        
+        # Ensure correct types
+        p = params.copy()
+        if "alpha" in p:
+            p["alpha"] = float(p["alpha"])
+            
+        model = Ridge(**p)
         model.fit(X, y)
         t = time.time() - t0
         preds = model.predict(X)

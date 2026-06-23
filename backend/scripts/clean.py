@@ -47,6 +47,31 @@ def load_config(path=None):
 
 
 def apply_cleaning(df: pd.DataFrame, config: dict) -> pd.DataFrame:
+    # 1. First fix categorical placeholders for sparse domain columns before any numerical imputation
+    domain_sparse_cols = {
+        "policy_type": "not_policy",
+        "policy_level": "not_policy",
+        "policy_stringency_score": "not_policy",
+        "patent_class": "no_patent",
+        "patent_family_size": "no_patent",
+        "publication_venue": "no_publication",
+        "open_access": "no_publication",
+    }
+    for col, placeholder in domain_sparse_cols.items():
+        if col in df.columns:
+            df[col] = df[col].replace(r"^\s*$", pd.NA, regex=True)
+            df[col] = df[col].fillna(placeholder)
+
+    # 2. Add missingness indicators
+    if "investment_roi" in df.columns:
+        df["has_investment_roi"] = df["investment_roi"].notna().astype(int)
+    if "population_served" in df.columns:
+        df["serves_population"] = df["population_served"].notna().astype(int)
+    savings_cols = ["co2_reduction_tons", "water_savings_liters", "energy_savings_kwh"]
+    existing_savings = [c for c in savings_cols if c in df.columns]
+    if existing_savings:
+        df["has_savings"] = df[existing_savings].notna().any(axis=1).astype(int)
+
     steps = config.get("cleaning", [])
     numeric_cols = df.select_dtypes(include="number").columns.tolist()
     categorical_cols = df.select_dtypes(exclude="number").columns.tolist()
@@ -81,10 +106,10 @@ def apply_cleaning(df: pd.DataFrame, config: dict) -> pd.DataFrame:
                     df[c] = df[c].replace(r"^\s*$", pd.NA, regex=True)
                     placeholder = _categorical_placeholder(c)
                     modes = df[c].mode()
-                    if c in {"policy_type", "policy_level", "policy_stringency_score", "patent_class", "patent_family_size", "publication_venue", "open_access"}:
-                        df[c] = df[c].fillna(placeholder)
-                    else:
-                        df[c] = df[c].fillna(modes.iloc[0] if not modes.empty else placeholder)
+                    # Skip columns already filled with domain-specific placeholders
+                    if c in domain_sparse_cols:
+                        continue
+                    df[c] = df[c].fillna(modes.iloc[0] if not modes.empty else placeholder)
 
         elif op == "remove_outliers_iqr":
             factor = step.get("factor", 1.5)

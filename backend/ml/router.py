@@ -171,11 +171,27 @@ def train_all(target_col: str, dataset: str = "original"):
     if df is None:
         raise HTTPException(400, "No data loaded")
 
+    import os, yaml
+    models_config_path = os.path.join(os.path.dirname(__file__), "models_config.yaml")
+    models_config = {}
+    if os.path.exists(models_config_path):
+        try:
+            with open(models_config_path) as f:
+                models_config = yaml.safe_load(f)
+        except Exception:
+            pass
+
     exclude = {'entry_id', 'title', 'abstract_summary', 'keywords', 'language',
                'dataset_used', 'publication_venue', target_col}
-    feature_cols = [c for c in df.columns if c not in exclude and not (
-        df[c].dtype == 'object' and df[c].nunique() > 50
-    )]
+    if models_config and "targets" in models_config and "exclude" in models_config["targets"]:
+        exclude.update(models_config["targets"]["exclude"])
+    exclude.add(target_col)
+    if target_col == "funding_usd":
+        exclude.add("impact_score")
+    elif target_col == "impact_score":
+        exclude.discard("funding_usd")
+
+    feature_cols = [c for c in df.columns if c not in exclude]
     if len(feature_cols) < 2:
         raise HTTPException(400, f"Not enough feature columns for target '{target_col}'")
 
@@ -186,11 +202,18 @@ def train_all(target_col: str, dataset: str = "original"):
         raise HTTPException(400, f"Data preparation failed: {e}")
 
     results = []
+    enabled_models = models_config.get("models", {})
     for m in list_all():
+        mname = m["name"]
+        mconfig = enabled_models.get(mname, {})
+        # Respect enabled/disabled flag from models_config
+        if models_config and not mconfig.get("enabled", True):
+            continue
+
         try:
-            cls = get(m["name"])
+            cls = get(mname)
             instance = cls()
-            params = instance.get_default_params()
+            params = mconfig.get("params", instance.get_default_params())
 
             t0 = __import__('time').time()
             result = instance.train(prepared["X_train"], prepared["y_train"], params)
@@ -214,7 +237,7 @@ def train_all(target_col: str, dataset: str = "original"):
 
             entry = {
                 "run_type": "ml_model",
-                "model_name": m["name"],
+                "model_name": mname,
                 "category": instance.category,
                 "target_col": target_col,
                 "feature_cols": prepared["feature_names"],
@@ -254,7 +277,7 @@ def train_all(target_col: str, dataset: str = "original"):
 
         except Exception as e:
             results.append({
-                "model_name": m["name"],
+                "model_name": mname,
                 "target_col": target_col,
                 "error": str(e),
             })
