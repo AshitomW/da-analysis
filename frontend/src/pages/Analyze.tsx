@@ -409,39 +409,7 @@ export default function Analyze() {
         )}
       </div>
 
-      {corr?.correlation?.length > 0 && (
-        <div className="lifted p-6 space-y-4">
-          <h3 className="mb-3">Correlation Matrix</h3>
-          <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Pearson correlation between numeric columns — values near ±1 indicate strong relationships, near 0 indicates no linear correlation.</p>
-          <div className="overflow-x-auto">
-            <table className="text-xs border-collapse mx-auto">
-              <thead>
-                <tr>
-                  <th></th>
-                  {corr.columns.map((c: string) => <th key={c} className="p-1.5 font-medium text-text-muted rotate-45 h-20 w-8 text-left">{colLabel(c)}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {corr.columns.map((r: string) => (
-                  <tr key={r}>
-                    <td className="p-1.5 font-medium text-text-muted text-right">{colLabel(r)}</td>
-                    {corr.columns.map((c: string) => {
-                      const pair = corr.correlation.find((p: any) => (p.x === r && p.y === c) || (p.x === c && p.y === r))
-                      const val = pair ? pair.value : (r === c ? 1 : null)
-                      const bg = val !== null ? `hsl(${120 - Math.abs(val as number) * 120}, 70%, ${85 - Math.abs(val as number) * 40}%)` : 'transparent'
-                      return (
-                        <td key={c} className="p-1.5 text-center font-mono" style={{ background: bg }}>
-                          {val !== null ? val.toFixed(2) : ''}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+
     </div>
   )
 

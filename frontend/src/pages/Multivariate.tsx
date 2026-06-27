@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { api } from '../api/client'
-import { colLabel, colUnit } from '../utils/columns'
+import { colLabel } from '../utils/columns'
 import { Skeleton } from '../components/Skeleton'
 import {
-  ScatterChart, LayoutDashboard, Box, Activity,
-  GitBranch, Grid3X3, Check, ChevronDown,
+  ScatterChart, Box, Activity,
+  Grid3X3, Check, ChevronDown,
 } from 'lucide-react'
 
 const NUMERIC_COLS = [
@@ -42,9 +42,7 @@ export default function Multivariate() {
     { id: 'scatter', label: 'Scatter', icon: ScatterChart },
     { id: 'box', label: 'Box Plots', icon: Box },
     { id: 'violin', label: 'Violin Plots', icon: Activity },
-    { id: 'parallel', label: 'Parallel Coords', icon: GitBranch },
     { id: 'heatmap', label: 'Heatmap', icon: Grid3X3 },
-    { id: 'radar', label: 'Radar', icon: LayoutDashboard },
   ]
 
   const [nCols, setNCols] = useState<string[]>([...NUMERIC_COLS])
@@ -82,9 +80,7 @@ export default function Multivariate() {
       {activeTab === 'scatter' && <ScatterTab nCols={nCols} cCols={cCols} />}
       {activeTab === 'box' && <BoxTab nCols={nCols} cCols={cCols} />}
       {activeTab === 'violin' && <ViolinTab nCols={nCols} cCols={cCols} />}
-      {activeTab === 'parallel' && <ParallelTab nCols={nCols} cCols={cCols} />}
       {activeTab === 'heatmap' && <HeatmapTab corr={corr} />}
-      {activeTab === 'radar' && <RadarTab nCols={nCols} cCols={cCols} />}
     </div>
   )
 }
@@ -419,84 +415,6 @@ function ViolinTab({ nCols, cCols }: { nCols: string[]; cCols: string[] }) {
   )
 }
 
-/* ── Parallel Coordinates ─────────────────────────────────────── */
-
-function ParallelTab({ nCols, cCols }: { nCols: string[]; cCols: string[] }) {
-  const defaultDims = ['funding_usd', 'impact_score', 'co2_reduction_tons', 'water_savings_liters', 'investment_roi']
-  const [dims, setDims] = useState(defaultDims)
-  const [colorCol, setColorCol] = useState('region')
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (dims.length < 2) return
-    setLoading(true)
-    api.get<any>(`/analysis/parallel-coords?dimensions=${dims.join(',')}&color=${colorCol}&limit=500`)
-      .then(setData).catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }, [dims, colorCol])
-
-  if (loading) return <Skeleton className="h-[500px] w-full" />
-  if (!data?.data?.length) return <div className="py-12 text-center text-sm text-text-muted">No data</div>
-
-  const dimDefs = data.dimensions.map((d: string) => {
-    const vals = data.data.map((r: any) => r[d]).filter((v: any) => v != null) as number[]
-    return {
-      label: colLabel(d),
-      values: data.data.map((r: any) => r[d]),
-      range: [Math.min(...vals), Math.max(...vals)],
-      tickvals: [Math.min(...vals), (Math.min(...vals) + Math.max(...vals)) / 2, Math.max(...vals)],
-    }
-  })
-
-  const colorVals = data.data.map((r: any) => r.color || '')
-  const colorCategories = [...new Set(colorVals)]
-  const cscale = colorCategories.map((c, i) => [i / (colorCategories.length - 1 || 1), COLORS[i % COLORS.length]])
-
-  const trace = {
-    type: 'parcoords' as const,
-    line: {
-      color: colorVals.map((c: string) => colorCategories.indexOf(c)),
-      colorscale: cscale,
-      showscale: false,
-    },
-    dimensions: dimDefs.map((d: any) => ({
-      label: d.label,
-      values: d.values,
-      range: d.range,
-      tickvals: d.tickvals,
-    })),
-  }
-
-  return (
-    <div className="space-y-4">
-      <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Parallel coordinates let you explore high-dimensional relationships. Each line represents a row — brush along any axis to filter.
-      </p>
-      <div className="lifted p-3 flex flex-wrap items-end gap-x-4 gap-y-2">
-        <MultiSelect label="Dimensions" selected={dims} onChange={setDims} options={nCols} minCount={2} />
-        <CompactSelect label="Color" value={colorCol} onChange={setColorCol} options={cCols} />
-      </div>
-      <div className="lifted p-4" style={{ height: 500 }}>
-        <Plot
-          data={[trace]}
-          layout={{
-            autosize: true,
-            height: 460,
-            margin: { l: 60, r: 40, b: 40, t: 20, pad: 4 },
-            paper_bgcolor: 'transparent',
-            plot_bgcolor: 'transparent',
-            font: { size: 11, color: '#6B7280' },
-          }}
-          config={{ responsive: true, displayModeBar: false }}
-          useResizeHandler
-          style={{ width: '100%', height: '100%' }}
-        />
-      </div>
-    </div>
-  )
-}
-
 /* ── Heatmap ──────────────────────────────────────────────────── */
 
 function HeatmapTab({ corr }: { corr: any }) {
@@ -583,74 +501,4 @@ function HeatmapTab({ corr }: { corr: any }) {
   )
 }
 
-/* ── Radar ────────────────────────────────────────────────────── */
 
-function RadarTab({ nCols, cCols }: { nCols: string[]; cCols: string[] }) {
-  const [group, setGroup] = useState('ai_technique')
-  const metricOptions = ['impact_score', 'innovation_index', 'investment_roi', 'citation_count', 'patent_family_size', 'policy_stringency_score', 'renewable_energy_share_pct']
-  const [metrics, setMetrics] = useState(metricOptions.slice(0, 5))
-  const [data, setData] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-
-  useEffect(() => {
-    if (metrics.length < 2) return
-    setLoading(true)
-    api.get<any>(`/analysis/radar?group=${group}&metrics=${metrics.join(',')}&top_k=8`)
-      .then(setData).catch(() => setData(null))
-      .finally(() => setLoading(false))
-  }, [group, metrics])
-
-  if (loading) return <Skeleton className="h-[500px] w-full" />
-  if (!data?.groups?.length) return <div className="py-12 text-center text-sm text-text-muted">No data</div>
-
-  const traceGroups = data.groups.map((g: any, i: number) => {
-    const values = data.metrics.map((m: string) => g[m] as number)
-    return {
-      type: 'scatterpolar' as const,
-      r: [...values, values[0]],
-      theta: [...data.metrics.map(colLabel), data.metrics.map(colLabel)[0]],
-      fill: 'toself',
-      name: g.group,
-      line: { color: COLORS[i % COLORS.length] },
-      fillcolor: COLORS[i % COLORS.length] + '33',
-    }
-  })
-
-  return (
-    <div className="space-y-4">
-      <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Radar charts compare entities across multiple metrics simultaneously. Each axis is a normalized dimension.
-      </p>
-      <div className="lifted p-3 flex flex-wrap items-end gap-x-4 gap-y-2">
-        <CompactSelect label="Group" value={group} onChange={setGroup} options={cCols} />
-        <MultiSelect label="Metrics" selected={metrics} onChange={setMetrics} options={nCols} minCount={2} />
-      </div>
-      <div className="lifted p-4" style={{ height: 500 }}>
-        <Plot
-          data={traceGroups}
-          layout={{
-            autosize: true,
-            height: 460,
-            margin: { l: 80, r: 80, b: 40, t: 20, pad: 4 },
-            paper_bgcolor: 'transparent',
-            plot_bgcolor: 'transparent',
-            font: { size: 10, color: '#6B7280' },
-            polar: {
-              radialaxis: {
-                visible: true,
-                tickfont: { size: 9 },
-                gridcolor: '#E5E7EB',
-              },
-              gridshape: 'circular',
-            },
-            showlegend: true,
-            legend: { orientation: 'h', y: 1.08, x: 0.5, xanchor: 'center', font: { size: 10 } },
-          }}
-          config={{ responsive: true, displayModeBar: false }}
-          useResizeHandler
-          style={{ width: '100%', height: '100%' }}
-        />
-      </div>
-    </div>
-  )
-}
