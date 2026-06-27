@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 from state import state
 import pandas as pd
@@ -212,3 +213,189 @@ def filter_data(
         "total_after": len(filtered),
         "rows": filtered.head(limit).to_dict(orient="records"),
     })
+
+
+@router.get("/boxplot")
+def boxplot(
+    column: str = Query(...),
+    group: str = Query(...),
+    top_k: int = Query(12),
+):
+    df = get_df()
+    if column not in df.columns:
+        raise HTTPException(400, f"Column '{column}' not found")
+    if group not in df.columns:
+        raise HTTPException(400, f"Group column '{group}' not found")
+    d = df[[column, group]].dropna()
+    if not pd.api.types.is_numeric_dtype(d[column]):
+        raise HTTPException(400, f"Column '{column}' is not numeric")
+    top_groups = d[group].value_counts().head(top_k).index
+    d = d[d[group].isin(top_groups)]
+    groups_data = []
+    for g in top_groups:
+        vals = d.loc[d[group] == g, column].values
+        if len(vals) < 2:
+            continue
+        q1, q2, q3 = np.percentile(vals, [25, 50, 75])
+        iqr = q3 - q1
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        filtered = vals[(vals >= lower) & (vals <= upper)]
+        whisker_low = filtered.min() if len(filtered) > 0 else lower
+        whisker_high = filtered.max() if len(filtered) > 0 else upper
+        outliers = vals[(vals < lower) | (vals > upper)].tolist()
+        groups_data.append({
+            "group": str(g),
+            "q1": float(q1),
+            "q2": float(q2),
+            "q3": float(q3),
+            "whisker_low": float(whisker_low),
+            "whisker_high": float(whisker_high),
+            "outliers": [float(o) for o in outliers],
+            "count": int(len(vals)),
+        })
+    return _sanitize({
+        "column": column,
+        "group": group,
+        "groups": groups_data,
+    })
+
+
+@router.get("/scatter")
+def scatter(
+    x: str = Query(...),
+    y: str = Query(...),
+    color: Optional[str] = Query(None),
+    limit: int = Query(2000),
+):
+    df = get_df()
+    if x not in df.columns:
+        raise HTTPException(400, f"Column '{x}' not found")
+    if y not in df.columns:
+        raise HTTPException(400, f"Column '{y}' not found")
+    cols = [x, y]
+    if color and color in df.columns:
+        cols.append(color)
+    d = df[cols].dropna().head(limit)
+    points = []
+    for _, row in d.iterrows():
+        pt = {"x": float(row[x]), "y": float(row[y])}
+        if color and color in df.columns:
+            pt["color"] = str(row[color])
+        points.append(pt)
+    return _sanitize({
+        "x": x,
+        "y": y,
+        "color": color,
+        "points": points,
+    })
+
+
+def _gaussian_kde(xs, vals, bw=None):
+    """Simple Gaussian KDE using numpy (no scipy dependency)."""
+    vals = np.asarray(vals)
+    n = len(vals)
+    if n < 2:
+        return np.zeros_like(xs)
+    if bw is None:
+        iqr = np.percentile(vals, 75) - np.percentile(vals, 25)
+        bw = 0.9 * min(np.std(vals), iqr / 1.34) * n ** (-0.2)
+    if bw == 0:
+        bw = 0.1 * (vals.max() - vals.min()) if vals.max() > vals.min() else 1.0
+    xs = np.asarray(xs)[:, None]
+    vals = np.asarray(vals)[None, :]
+    density = np.sum(np.exp(-0.5 * ((xs - vals) / bw) ** 2), axis=1)
+    density = density / (np.sqrt(2 * np.pi) * bw * n)
+    return density
+
+
+@router.get("/density")
+def density(
+    column: str = Query(...),
+    group: str = Query(...),
+    top_k: int = Query(6),
+    grid_size: int = Query(100),
+):
+    df = get_df()
+    if column not in df.columns:
+        raise HTTPException(400, f"Column '{column}' not found")
+    if group not in df.columns:
+        raise HTTPException(400, f"Group column '{group}' not found")
+    d = df[[column, group]].dropna()
+    if not pd.api.types.is_numeric_dtype(d[column]):
+        raise HTTPException(400, f"Column '{column}' is not numeric")
+    top_groups = d[group].value_counts().head(top_k).index
+    d = d[d[group].isin(top_groups)]
+    groups_data = []
+    for g in top_groups:
+        vals = d.loc[d[group] == g, column].values
+        if len(vals) < 3:
+            continue
+        x_min, x_max = float(vals.min()), float(vals.max())
+        pad = (x_max - x_min) * 0.1 if x_max > x_min else 1.0
+        xs = np.linspace(x_min - pad, x_max + pad, grid_size)
+        density = _gaussian_kde(xs, vals)
+        density_sum = density.sum()
+        normalized = (density / density_sum) if density_sum > 0 else density
+        groups_data.append({
+            "group": str(g),
+            "x": xs.tolist(),
+            "density": normalized.tolist(),
+            "count": int(len(vals)),
+        })
+    return _sanitize({
+        "column": column,
+        "group": group,
+        "groups": groups_data,
+    })
+
+
+@router.get("/parallel-coords")
+def parallel_coords(
+    dimensions: str = Query(..., description="Comma-separated numeric column names"),
+    color: Optional[str] = Query(None),
+    limit: int = Query(500),
+):
+    df = get_df()
+    cols = [c.strip() for c in dimensions.split(",")]
+    for c in cols:
+        if c not in df.columns:
+            raise HTTPException(400, f"Column '{c}' not found")
+    cols_to_use = cols[:]
+    if color and color in df.columns:
+        cols_to_use.append(color)
+    d = df[cols_to_use].dropna().head(limit)
+    result = {"dimensions": cols, "data": []}
+    for _, row in d.iterrows():
+        pt = {c: float(row[c]) for c in cols}
+        if color and color in df.columns:
+            pt["color"] = str(row[color])
+        result["data"].append(pt)
+    return _sanitize(result)
+
+
+@router.get("/radar")
+def radar(
+    group: str = Query(...),
+    metrics: str = Query(..., description="Comma-separated numeric column names"),
+    top_k: int = Query(8),
+):
+    df = get_df()
+    if group not in df.columns:
+        raise HTTPException(400, f"Group column '{group}' not found")
+    metric_cols = [c.strip() for c in metrics.split(",")]
+    for c in metric_cols:
+        if c not in df.columns:
+            raise HTTPException(400, f"Metric column '{c}' not found")
+    cols = [group] + metric_cols
+    d = df[cols].dropna()
+    top_groups = d[group].value_counts().head(top_k).index
+    d = d[d[group].isin(top_groups)]
+    result = {"group": group, "metrics": metric_cols, "groups": []}
+    for g in top_groups:
+        subset = d[d[group] == g]
+        row_data = {"group": str(g)}
+        for m in metric_cols:
+            row_data[m] = float(subset[m].mean())
+        result["groups"].append(row_data)
+    return _sanitize(result)

@@ -81,3 +81,66 @@ export interface NNTrainResult {
   test_size: number
   layer_details: { name: string; type: string; output_shape: string; params: number }[]
 }
+
+export interface BoxPlotGroup {
+  group: string
+  q1: number
+  q2: number
+  q3: number
+  whisker_low: number
+  whisker_high: number
+  outliers: number[]
+  count: number
+}
+
+export interface BoxPlotData {
+  column: string
+  group: string
+  groups: BoxPlotGroup[]
+}
+
+export interface ScatterPoint {
+  x: number
+  y: number
+  color?: string
+}
+
+export interface ScatterData {
+  x: string
+  y: string
+  color: string | null
+  points: ScatterPoint[]
+}
+
+export interface DensityGroup {
+  group: string
+  x: number[]
+  density: number[]
+  count: number
+}
+
+export interface DensityData {
+  column: string
+  group: string
+  groups: DensityGroup[]
+}
+
+export interface ParallelCoordRow {
+  [key: string]: number | string | undefined
+}
+
+export interface ParallelCoordData {
+  dimensions: string[]
+  data: ParallelCoordRow[]
+}
+
+export interface RadarGroup {
+  group: string
+  [metric: string]: number | string | undefined
+}
+
+export interface RadarData {
+  group: string
+  metrics: string[]
+  groups: RadarGroup[]
+}

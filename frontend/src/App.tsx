@@ -6,6 +6,7 @@ import DataQuality from './pages/DataQuality'
 import Clean from './pages/Clean'
 import Analyze from './pages/Analyze'
 import ResearchModeling from './pages/ResearchModeling'
+import Multivariate from './pages/Multivariate'
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/clean" element={<Clean />} />
           <Route path="/analyze" element={<Analyze />} />
           <Route path="/research-modeling" element={<ResearchModeling />} />
+          <Route path="/multivariate" element={<Multivariate />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Table, BarChart3, Brain,
-  FlaskConical, Sparkles, Droplets,
+  FlaskConical, Sparkles, Droplets, ScatterChart,
 } from 'lucide-react'
 
 const links = [
@@ -10,6 +10,7 @@ const links = [
   { to: '/quality', label: 'Quality', icon: FlaskConical },
   { to: '/clean', label: 'Clean', icon: Sparkles },
   { to: '/analyze', label: 'Analyze', icon: BarChart3 },
+  { to: '/multivariate', label: 'Multivariate', icon: ScatterChart },
   { to: '/research-modeling', label: 'Research & Modeling', icon: Brain },
 ]
 
