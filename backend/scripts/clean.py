@@ -86,13 +86,27 @@ def apply_cleaning(df: pd.DataFrame, config: dict) -> pd.DataFrame:
                     else:
                         df[c] = df[c].fillna(modes.iloc[0] if not modes.empty else placeholder)
 
+        # elif op == "remove_outliers_iqr":
+        #     factor = step.get("factor", 1.5)
+        #     for c in cols:
+        #         if c in df.columns and c in numeric_cols:
+        #             q1, q3 = df[c].quantile(0.25), df[c].quantile(0.75)
+        #             iqr = q3 - q1
+        #             df = df[(df[c] >= q1 - factor * iqr) & (df[c] <= q3 + factor * iqr)]
         elif op == "remove_outliers_iqr":
             factor = step.get("factor", 1.5)
             for c in cols:
                 if c in df.columns and c in numeric_cols:
                     q1, q3 = df[c].quantile(0.25), df[c].quantile(0.75)
                     iqr = q3 - q1
-                    df = df[(df[c] >= q1 - factor * iqr) & (df[c] <= q3 + factor * iqr)]
+                    
+                    # SAFEGUARD: Skip outlier filtering if there is no variance (IQR is 0)
+                    if iqr > 0:
+                        # FIX: Adding '| df[c].isna()' preserves rows where this column is blank/null
+                        df = df[
+                            ((df[c] >= q1 - factor * iqr) & (df[c] <= q3 + factor * iqr)) 
+                            | df[c].isna()
+                        ]
 
         elif op == "drop_na_rows":
             df = df.dropna()

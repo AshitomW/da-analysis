@@ -1,4 +1,4 @@
-dataset: original
+# dataset: original
 
 cleaning:
   - operation: drop_columns
@@ -9,7 +9,13 @@ cleaning:
       - keywords
 
   - operation: fill_na_median
-    columns: __numeric__
+    # Explicitly list only columns that should be filled for ALL records.
+    # Exclude structural columns (roi, water savings, citations, etc.) so they stay NaN.
+    columns:
+      - year
+      - funding_usd
+      - impact_score
+      - population_served
 
   - operation: fill_na_mode
     columns: __categorical__
