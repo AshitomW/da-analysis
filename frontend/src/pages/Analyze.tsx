@@ -77,8 +77,7 @@ export default function Analyze() {
   const renderFunding = () => (
     <div className="space-y-4">
       <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Overview of funding distribution across projects. The histogram shows how funding amounts are spread across bins,
-        while the sector breakdown highlights which sectors receive the most funding.
+        Overview of funding distribution across projects. The histogram shows how funding amounts are spread across bins, while the sector breakdown highlights which sectors receive the most funding.
       </p>
       <div className="grid grid-cols-4 gap-4">
         <div className="lifted p-6 text-center space-y-1.5">
@@ -102,7 +101,7 @@ export default function Analyze() {
       <div className="grid grid-cols-2 gap-4">
         <div className="lifted p-6 space-y-4">
           <h3 className="mb-3">Distribution</h3>
-          <p className="text-[11px] text-text-muted mb-3 leading-relaxed">How funding amounts are spread — each bar groups projects within a value range.</p>
+          <p className="text-[11px] text-text-muted mb-3 leading-relaxed">How funding amounts are spread. Each bar groups projects within a value range, showing the count of projects falling in that specific budget bucket.</p>
           {histogram && selectedCol === 'funding_usd' ? (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={histogram.edges.slice(0, -1).map((e: number, i: number) => ({ range: formatNumber(e), count: histogram.histogram[i] }))}>
@@ -118,7 +117,7 @@ export default function Analyze() {
 
         <div className="lifted p-6 space-y-4">
           <h3 className="mb-3">By Sector</h3>
-          <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Number of projects per sector — highlights which industries dominate.</p>
+          <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Number of projects per sector, highlighting which industries receive the highest volume of initiatives.</p>
           {distributions['sector']?.length ? (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={distributions['sector'].slice(0, 10)} layout="vertical">
@@ -174,7 +173,7 @@ export default function Analyze() {
 
       <div className="lifted p-6 space-y-4">
         <h3 className="mb-3">Statistics</h3>
-        <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Aggregate metrics for funding_usd — total, average, median, and spread.</p>
+        <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Aggregate metrics for funding_usd, showing the total capital, average, median, and variance.</p>
         {fundingStats ? (
           <div className="grid grid-cols-4 gap-3 text-sm">
             {Object.entries(fundingStats).filter(([k]) => !['histogram', 'hist_edges'].includes(k)).map(([k, v]) => (
@@ -194,8 +193,7 @@ export default function Analyze() {
     return (
       <div className="space-y-4">
         <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-          Key impact indicators across projects. Each card shows the distribution (mean, median, min, max, std) for
-          a metric — higher impact scores and innovation indices indicate more influential projects.
+          Key impact indicators across projects. Each card displays the distribution statistics for a metric. Higher impact scores and innovation indices indicate more influential projects.
         </p>
         <div className="grid grid-cols-3 gap-4">
         {cols.map((col) => {
@@ -204,7 +202,7 @@ export default function Analyze() {
           return (
             <div key={col} className="lifted p-6 space-y-4">
               <h3 className="mb-2">{colLabel(col)}</h3>
-              <p className="text-[11px] text-text-muted mb-2 leading-relaxed">{col === 'impact_score' ? 'Overall impact rating — higher is better.' : col === 'innovation_index' ? 'How novel the project approach is.' : col === 'investment_roi' ? 'Return on investment percentage.' : col === 'population_served' ? 'Number of people benefiting.' : col === 'citation_count' ? 'Total academic citations received.' : col === 'model_performance_value' ? 'Reported model accuracy or performance metric.' : ''}</p>
+              <p className="text-[11px] text-text-muted mb-2 leading-relaxed">{col === 'impact_score' ? 'Overall impact rating. Higher values indicate greater real-world impact.' : col === 'innovation_index' ? 'How novel the project approach is.' : col === 'investment_roi' ? 'Return on investment percentage.' : col === 'population_served' ? 'Number of people benefiting.' : col === 'citation_count' ? 'Total academic citations received.' : col === 'model_performance_value' ? 'Reported model accuracy or performance metric.' : ''}</p>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between"><span className="text-text-muted">Mean</span><span className="font-medium">{formatNumber(s.mean)}</span></div>
                 <div className="flex justify-between"><span className="text-text-muted">Median</span><span className="font-medium">{formatNumber(s.median)}</span></div>
@@ -225,8 +223,7 @@ export default function Analyze() {
     return (
       <div className="space-y-4">
         <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-          Environmental performance metrics per project. CO₂ reduction, water savings, energy savings, and
-          renewable energy share — each card shows average, max, and distribution stats side by side.
+          Environmental performance metrics per project. CO₂ reduction, water savings, energy savings, and renewable energy share. Each card shows average, maximum, and distribution stats side by side.
         </p>
         <div className="grid grid-cols-2 gap-4">
         {cols.map((col) => {
@@ -262,8 +259,7 @@ export default function Analyze() {
   const renderTechniques = () => (
     <div className="space-y-4">
       <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Distribution of AI techniques, deployment scales, application domains, and model performance metrics.
-        Each bar chart shows the top 10 most frequent values for a categorical attribute.
+        Distribution of AI techniques, deployment scales, application domains, and model performance metrics. Each bar chart shows the top 10 most frequent values for a categorical attribute.
       </p>
       <div className="grid grid-cols-2 gap-4">
         {TECH_COLS.map((col) => {
@@ -296,8 +292,7 @@ export default function Analyze() {
   const renderGeographic = () => (
     <div className="space-y-4">
       <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Geographic distribution of projects by country, region, climate zone, and water stress level.
-        Longer bars indicate more projects in that location or classification.
+        Geographic distribution of projects by country, region, climate zone, and water stress level. Longer bars indicate more projects in that location or classification.
       </p>
       <div className="grid grid-cols-2 gap-4">
         {GEO_COLS.map((col) => {
@@ -306,7 +301,7 @@ export default function Analyze() {
         return (
           <div key={col} className="lifted p-6 space-y-4">
             <h3 className="mb-3">{colLabel(col)}</h3>
-            <p className="text-[11px] text-text-muted mb-2 leading-relaxed">Top 15 most common {colLabel(col).toLowerCase()} entries — longer bars mean more projects.</p>
+            <p className="text-[11px] text-text-muted mb-2 leading-relaxed">Top 15 most common {colLabel(col).toLowerCase()} entries, where longer bars indicate more projects.</p>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={data.slice(0, 15)} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
@@ -330,12 +325,11 @@ export default function Analyze() {
   const renderTemporal = () => (
     <div className="space-y-4">
       <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Trends over time — the line chart shows project count per year, and the bar chart breaks down
-        entries by quarter to reveal seasonal patterns in the dataset.
+        Trends over time. The line chart shows the overall project count per year, and the bar chart breaks down entries by quarter to reveal seasonal patterns in the dataset.
       </p>
       <div className="lifted p-6 space-y-4">
         <h3 className="mb-3">Entries by Year</h3>
-        <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Project count per year — reveals growth trends and publication activity over time.</p>
+        <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Project count per year, revealing growth trends and publication activity over time.</p>
         {temporalData.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={temporalData}>
@@ -350,7 +344,7 @@ export default function Analyze() {
       </div>
       <div className="lifted p-6 space-y-4">
         <h3 className="mb-3">Quarterly</h3>
-        <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Seasonal breakdown — project count grouped by calendar quarter.</p>
+        <p className="text-[11px] text-text-muted mb-3 leading-relaxed">Seasonal breakdown representing project count grouped by calendar quarter.</p>
         {distributions['quarter']?.length ? (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={distributions['quarter']}>
@@ -373,8 +367,7 @@ export default function Analyze() {
   const renderNumeric = () => (
     <div className="space-y-4">
       <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Explore any numeric column in detail — pick a column to see its stats, histogram distribution,
-        and correlation with other numeric columns in the dataset.
+        Explore any numeric column in detail. Pick a column to view its stats, histogram distribution, and correlation with other numeric columns in the dataset.
       </p>
       <div className="lifted p-6 space-y-4">
         <h3 className="mb-3">Column Explorer</h3>
@@ -419,8 +412,7 @@ export default function Analyze() {
     return (
       <div className="space-y-4">
         <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-          Research-related attributes — distribution of SDG alignment, entry types, and statuses,
-          plus statistics on citations, patent families, venue influence, and policy relevance.
+          Research-related attributes, covering the distribution of SDG alignment, entry types, and statuses. It also includes statistics on citations, patent families, venue influence, and policy relevance.
         </p>
         <div className="grid grid-cols-2 gap-4">
           {catCols.map((col) => {
@@ -454,7 +446,7 @@ export default function Analyze() {
             return (
               <div key={col} className="lifted p-6 space-y-4">
                 <h3 className="mb-2">{colLabel(col)}</h3>
-                <p className="text-[11px] text-text-muted mb-2 leading-relaxed">{col === 'citation_count' ? 'Total citations across publications.' : col === 'patent_family_size' ? 'Number of patents filed per project.' : col === 'venue_h_index' ? 'H-index of the publication venue — reflects venue influence.' : col === 'policy_stringency_score' ? 'How strict relevant policies are (higher = stricter).' : ''}</p>
+                <p className="text-[11px] text-text-muted mb-2 leading-relaxed">{col === 'citation_count' ? 'Total citations across publications.' : col === 'patent_family_size' ? 'Number of patents filed per project.' : col === 'venue_h_index' ? 'H-index of the publication venue, reflecting how influential the publishing journal is.' : col === 'policy_stringency_score' ? 'How strict relevant policies are, where higher values indicate stricter regulations.' : ''}</p>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div><span className="text-text-muted">Mean:</span> <span className="font-medium">{formatNumber(s.mean)}</span></div>
                   <div><span className="text-text-muted">Median:</span> <span className="font-medium">{formatNumber(s.median)}</span></div>

@@ -103,7 +103,7 @@ export default function Dashboard() {
         <div className="space-y-2">
           <h1>Water-Energy Nexus Dashboard</h1>
           <p className="text-sm text-text-muted max-w-[560px]">
-            Overview of the AI for Water-Energy Nexus dataset — {summary.total_rows.toLocaleString()} entries across {summary.total_columns} dimensions covering funding, environmental impact, AI techniques, and geographic distribution
+            Overview of the AI for Water-Energy Nexus dataset. Displays {summary.total_rows.toLocaleString()} entries across {summary.total_columns} dimensions covering funding, environmental impact, AI techniques, and geographic distribution.
           </p>
         </div>
         <span className="text-[11px] font-medium text-text-muted uppercase tracking-label bg-surface px-3 py-1.5 rounded-xs">

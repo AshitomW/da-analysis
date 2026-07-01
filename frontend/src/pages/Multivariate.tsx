@@ -251,7 +251,7 @@ function ScatterTab({ nCols, cCols }: { nCols: string[]; cCols: string[] }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Explore relationships between numeric variables. Color encodes a categorical dimension.
+        This scatter plot displays the relationship between two numeric columns. Each point represents a project in the database. You can spot patterns or correlations by looking at the trend of the dots, while the colors represent the categorical groups to show how different regions or sectors are distributed.
       </p>
       <AxisSelector
         xCol={xCol} setXCol={setXCol}
@@ -322,10 +322,10 @@ function BoxTab({ nCols, cCols }: { nCols: string[]; cCols: string[] }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Distribution of a numeric variable across categorical groups. Shows median, quartiles, range, and outliers.
+        This box plot shows the distribution of your selected numeric column split by categories. It helps you compare groups side-by-side by looking at the median, the middle fifty percent range (indicated by the box bounds), the general range of typical values (indicated by the vertical whiskers), and any extreme anomalies plotted as individual outlier points.
       </p>
       <GroupSelect col={col} setCol={setCol} group={group} setGroup={setGroup} nCols={nCols} cCols={cCols} />
-      <div className="lifted p-4" style={{ height: 500 }}>
+      <div className="lifted p-4 overflow-x-auto" style={{ height: 500 }}>
         <Plot
           data={traces}
           layout={{
@@ -343,7 +343,7 @@ function BoxTab({ nCols, cCols }: { nCols: string[]; cCols: string[] }) {
           }}
           config={{ responsive: true, displayModeBar: false }}
           useResizeHandler
-          style={{ width: '100%', height: '100%' }}
+          style={{ minWidth: '800px', width: '100%', height: '100%' }}
         />
       </div>
     </div>
@@ -386,10 +386,10 @@ function ViolinTab({ nCols, cCols }: { nCols: string[]; cCols: string[] }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-text-muted p-3 surface rounded-md leading-relaxed">
-        Violin plots show the full probability density of a numeric variable across categories — reveals multimodality, skew, and spread.
+        This violin plot shows the probability density of your chosen numerical column across the selected categories. Unlike a standard box plot, it displays the actual shape of the data distribution, which helps you see if projects are clustered around multiple peaks, if the data is skewed toward higher or lower values, and how wide the overall spread of values is.
       </p>
       <GroupSelect col={col} setCol={setCol} group={group} setGroup={setGroup} nCols={nCols} cCols={cCols} />
-      <div className="lifted p-4" style={{ height: 500 }}>
+      <div className="lifted p-4 overflow-x-auto" style={{ height: 500 }}>
         <Plot
           data={traces}
           layout={{
@@ -408,7 +408,7 @@ function ViolinTab({ nCols, cCols }: { nCols: string[]; cCols: string[] }) {
           }}
           config={{ responsive: true, displayModeBar: false }}
           useResizeHandler
-          style={{ width: '100%', height: '100%' }}
+          style={{ minWidth: '800px', width: '100%', height: '100%' }}
         />
       </div>
     </div>

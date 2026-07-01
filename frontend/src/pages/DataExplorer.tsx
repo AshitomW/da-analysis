@@ -78,7 +78,7 @@ export default function DataExplorer() {
       <div className="mb-1">
         <h1>Data Explorer</h1>
         <p className="text-sm text-text-muted">
-          Browse raw data from the Water-Energy Nexus dataset — {total.toLocaleString()} entries across {columns.length} columns
+          Browse raw data from the Water-Energy Nexus dataset, consisting of {total.toLocaleString()} entries across {columns.length} columns
         </p>
       </div>
 

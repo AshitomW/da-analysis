@@ -66,7 +66,7 @@ export default function DataQuality() {
         </p>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="lifted p-6 text-center space-y-1.5">
           <div className="text-[26px] font-light text-text-primary tracking-heading">{summary.total_rows.toLocaleString()}</div>
           <div className="text-[11px] font-medium text-text-muted uppercase tracking-label">Total Entries</div>
@@ -79,10 +79,6 @@ export default function DataQuality() {
           <div className="text-[26px] font-light text-text-primary tracking-heading">{summary.null_pct}%</div>
           <div className="text-[11px] font-medium text-text-muted uppercase tracking-label">Overall Null Rate</div>
         </div>
-        <div className="lifted p-6 text-center space-y-1.5">
-          <div className="text-[26px] font-light text-text-primary tracking-heading">{summary.memory_mb} MB</div>
-          <div className="text-[11px] font-medium text-text-muted uppercase tracking-label">Memory Usage</div>
-        </div>
       </div>
 
       <div className="lifted p-6 space-y-4">
@@ -90,7 +86,7 @@ export default function DataQuality() {
         <p className="text-xs text-text-muted mb-3">
           {nullCols.length} of {columns.length} columns have missing data. Bars show the percentage of null values.
         </p>
-        {nullCols.length === 0 && <p className="text-sm text-text-muted">No missing values found — the dataset is fully complete.</p>}
+        {nullCols.length === 0 && <p className="text-sm text-text-muted">No missing values found. The dataset is fully complete.</p>}
         {nullCols.map((c) => (
           <div key={c.name} className="flex items-center gap-3 mb-1.5">
             <span className="w-44 text-xs truncate font-medium" title={colLabel(c.name)}>{colLabel(c.name)}</span>

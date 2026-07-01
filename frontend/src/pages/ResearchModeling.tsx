@@ -7,7 +7,7 @@ import {
 } from 'recharts'
 import {
   Cpu, Target, BookOpen, Calendar, TrendingUp, Award, Layers,
-  CheckCircle2, AlertTriangle, Droplets
+  AlertTriangle, Droplets
 } from 'lucide-react'
 import { Skeleton } from '../components/Skeleton'
 
@@ -212,6 +212,19 @@ export default function ResearchModeling() {
       return point
     })
 
+    const yearlyTotals: { [key: number]: number } = {}
+    timeSeries.data.forEach(d => {
+      yearlyTotals[d.year] = (yearlyTotals[d.year] || 0) + d.count
+    })
+    let peakYear = 'N/A'
+    let maxVolume = 0
+    Object.entries(yearlyTotals).forEach(([yr, total]) => {
+      if (total > maxVolume) {
+        maxVolume = total
+        peakYear = yr
+      }
+    })
+
     const colors = ['#2563EB', '#059669', '#D97706', '#DC2626', '#7C3AED']
 
     return (
@@ -232,7 +245,7 @@ export default function ResearchModeling() {
             <div className="text-[11px] font-medium text-text-muted uppercase tracking-label">Dominant Technique</div>
           </div>
           <div className="lifted p-6 text-center space-y-1.5">
-            <div className="text-xl font-light text-text-primary tracking-heading">2026</div>
+            <div className="text-xl font-light text-text-primary tracking-heading">{peakYear}</div>
             <div className="text-[11px] font-medium text-text-muted uppercase tracking-label">Peak Activity Year</div>
           </div>
         </div>
@@ -274,11 +287,7 @@ export default function ResearchModeling() {
             </ResponsiveContainer>
           </div>
           <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-            <strong>Chart Explanation:</strong> This area chart illustrates the growth trajectory of the top 5 AI methodologies.
-            A widening vertical band indicates increasing adoption and real-world deployment over time.
-            Within the water-energy nexus, the steady rise of Computer Vision and Deep Learning represents a paradigm shift
-            from simple rule-based controls to high-dimensional spatial sensing (e.g. satellite-based crop stress monitoring)
-            and temporal modeling (e.g. smart-grid load forecasting).
+            <strong>Chart Explanation:</strong> This chart shows how the volume of projects using each of the top 5 AI techniques has evolved over time. Widening bands highlight the growth of techniques like Computer Vision (e.g., for satellite crop monitoring) and Deep Learning (e.g., for grid load forecasting) compared to other methodologies.
           </p>
         </div>
 
@@ -323,8 +332,7 @@ export default function ResearchModeling() {
             </table>
           </div>
           <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-            <strong>Table Explanation:</strong> This matrix tracks the percentage share of each AI technique over total active records for that year.
-            It illustrates the relative dominance of different methodologies over time, helping to identify which technologies are becoming industry standards versus those that remain niche.
+            <strong>Table Explanation:</strong> This table lists the year-by-year percentage share for each methodology. It makes it easy to track which techniques are scaling up and gaining traction, and which ones are becoming less common.
           </p>
         </div>
       </div>
@@ -335,6 +343,57 @@ export default function ResearchModeling() {
     if (!nlp) return <Skeleton className="h-[400px] w-full" />
 
     const wordCloudColors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#6366F1']
+
+    const getDynamicVocabularyExplanation = () => {
+      if (!nlp.topics || nlp.topics.length === 0 || !nlp.topic_distribution || nlp.topic_distribution.length === 0) {
+        return "Each card displays the top weighted keywords for an LDA topic. Keywords that decay in opacity have a slightly lower statistical weight within that theme, helping explain the semantic focus of that topic bucket."
+      }
+      
+      const sortedDistribution = [...nlp.topic_distribution].sort((a, b) => b.share - a.share)
+      const topTopicDist = sortedDistribution[0]
+      const topTopicData = nlp.topics.find(t => t.topic === topTopicDist.topic)
+      
+      const bottomTopicDist = sortedDistribution[sortedDistribution.length - 1]
+      const bottomTopicData = nlp.topics.find(t => t.topic === bottomTopicDist.topic)
+      
+      let explanation = "Each card displays the top weighted keywords for an LDA topic. Keywords that decay in opacity have a slightly lower statistical weight, representing their relative importance. "
+      
+      if (topTopicDist && topTopicData) {
+        const topWords = topTopicData.top_10_terms.slice(0, 3).join(", ")
+        explanation += `In this run, Topic #${topTopicDist.topic} is the most prevalent theme, accounting for ${(topTopicDist.share * 100).toFixed(1)}% of the corpus. The prominence of words like "${topWords}" highlights the major research focus within this category.`
+      }
+      
+      if (bottomTopicDist && bottomTopicData) {
+        const bottomWords = bottomTopicData.top_10_terms.slice(0, 3).join(", ")
+        explanation += ` Conversely, Topic #${bottomTopicDist.topic} has the lowest representation in the corpus with ${(bottomTopicDist.share * 100).toFixed(1)}% share (centered around keywords like "${bottomWords}").`
+      }
+      
+      return explanation
+    }
+
+    const getDynamicGeographiesExplanation = () => {
+      if (!nlp.cluster_geo_profile || nlp.cluster_geo_profile.length === 0) {
+        return "These cards map the geographical concentration of document clusters. By combining linguistic analysis with publisher regions, we isolate where specific technologies are researched and validated."
+      }
+      
+      const sortedClusters = [...nlp.cluster_geo_profile].sort((a, b) => b.size - a.size)
+      const largest = sortedClusters[0]
+      const secondLargest = sortedClusters[1]
+      
+      let explanation = "These cards map the geographical concentration of document clusters. By combining linguistic analysis with publisher regions, we isolate where specific technologies are researched and validated. "
+      
+      if (largest) {
+        const largestRegions = Object.keys(largest.top_regions).slice(0, 2).join(" and ") || "various territories"
+        explanation += `For instance, Cluster ${largest.cluster} (${largest.cluster_name}) is the largest with ${largest.size.toLocaleString()} records, showing a high concentration of research and validation activities in ${largestRegions}. `
+      }
+      
+      if (secondLargest) {
+        const secondRegions = Object.keys(secondLargest.top_regions).slice(0, 2).join(" and ") || "various territories"
+        explanation += `Meanwhile, Cluster ${secondLargest.cluster} (${secondLargest.cluster_name}) is prominent in ${secondRegions}, demonstrating how regional research priorities align with local needs and environmental infrastructure.`
+      }
+      
+      return explanation
+    }
 
     return (
       <div className="space-y-4">
@@ -384,7 +443,7 @@ export default function ResearchModeling() {
               </ResponsiveContainer>
             </div>
             <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-              <strong>Chart Explanation:</strong> The horizontal bar chart shows the relative share of each thematic topic across the document corpus. Topic T1 (Optimization/Grid) and Topic T2 (Water/Irrigation) represent the largest buckets of literature in our dataset.
+              <strong>Chart Explanation:</strong> This chart compares the prevalence of the 8 extracted topics across all analyzed documents, showing which themes receive the most research focus.
             </p>
           </div>
 
@@ -415,7 +474,7 @@ export default function ResearchModeling() {
               })}
             </div>
             <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-              <strong>Vocabulary Map Explanation:</strong> Each card displays the top weighted keywords for an LDA topic. Keywords that decay in opacity have a slightly lower statistical weight within that theme, helping explain the semantic focus of that topic bucket.
+              <strong>Vocabulary Map Explanation:</strong> {getDynamicVocabularyExplanation()}
             </p>
           </div>
         </div>
@@ -465,7 +524,7 @@ export default function ResearchModeling() {
             ))}
           </div>
           <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-            <strong>Geographies Explanation:</strong> These cards map the geographical concentration of document clusters. By combining linguistic analysis with publisher regions, we isolate where specific technologies are researched and validated. For example, Cluster 2 (Precision Irrigation) shows high concentration in arid and water-stressed areas like Sub-Saharan Africa and the Middle East, while Cluster 1 (Grid Optimization) dominates in North America and Europe.
+            <strong>Geographies Explanation:</strong> {getDynamicGeographiesExplanation()}
           </p>
         </div>
       </div>
@@ -541,7 +600,7 @@ export default function ResearchModeling() {
             </div>
 
             <p className="text-xs text-text-muted leading-relaxed bg-surface p-3 rounded-md border border-border/40">
-              <strong>Environmental Charts Explanation:</strong> These charts show the average water savings (in liters) and carbon reduction (in CO2 metric tons) achieved by projects using each AI technique. By analyzing these figures, public policy planners can select the most appropriate AI methodology depending on whether their local region is water-constrained (requiring techniques with high water savings like Computer Vision) or carbon-constrained (requiring techniques with high CO2 reduction like Deep Learning).
+              <strong>Environmental Charts Explanation:</strong> These charts compare the average water and carbon savings achieved across different AI techniques. This helps identify which algorithms are most effective for water conservation versus carbon reduction depending on local environmental priorities.
             </p>
           </div>
         )}
@@ -565,7 +624,7 @@ export default function ResearchModeling() {
               </ResponsiveContainer>
             </div>
             <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-              <strong>Chart Explanation:</strong> This grouped bar chart compares investment ROI against overall impact scores across different collaboration types. Public-Private Partnerships (PPPs) show the highest average impact score, while pure industry efforts achieve the highest financial ROI. This helps planners determine the optimal stakeholder mix based on funding constraints and impact goals.
+              <strong>Chart Explanation:</strong> This chart compares average investment ROI against project impact scores across different collaboration models. It highlights the trade-offs between public-private partnerships (which tend to maximize impact) and industry-led initiatives (which focus more on financial ROI).
             </p>
           </div>
 
@@ -595,7 +654,7 @@ export default function ResearchModeling() {
               </ResponsiveContainer>
             </div>
             <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-              <strong>Chart Explanation:</strong> This stacked bar chart shows the distribution of top AI techniques deployed across different water stress levels. In Extremely High stress zones, we observe a surge in Computer Vision deployments (for crop monitoring) and Deep Learning (for leak detection), demonstrating that AI deployments are actively adapting to regional climate pressures.
+              <strong>Chart Explanation:</strong> This chart shows how different AI techniques are distributed across regions with varying water stress levels, tracking whether technologies are being deployed in high-stress zones where resource management is most critical.
             </p>
           </div>
         </div>
@@ -621,7 +680,7 @@ export default function ResearchModeling() {
               </ResponsiveContainer>
             </div>
             <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-              <strong>Chart Explanation:</strong> This stacked area chart shows the growth of different entry types over time. It tracks how foundational research publications (blue) eventually translate into commercial software projects (green), industrial utility patents (amber), and legislative policies (red), showing the lifecycle of clean-tech innovation.
+              <strong>Chart Explanation:</strong> This area chart tracks how the project mix shifts over time. It shows the progression from academic publications (blue) to active projects (green), patented technologies (amber), and policy frameworks (red).
             </p>
           </div>
 
@@ -652,7 +711,7 @@ export default function ResearchModeling() {
               </table>
             </div>
             <p className="text-xs text-text-muted leading-relaxed mt-2 bg-surface p-3 rounded-md">
-              <strong>Table Explanation:</strong> This matrix compares policy stringency scores against open-access rates across different continents. High policy stringency scores (e.g., in Europe) correlate with higher open-access rates, proving that robust regulatory frameworks actively encourage public sharing of water-energy research.
+              <strong>Table Explanation:</strong> This table compares regulatory policy scores with the percentage of open-access publications by region. It helps you see if regions with stricter environmental policies also have a higher rate of open science sharing.
             </p>
           </div>
         </div>
@@ -706,13 +765,6 @@ export default function ResearchModeling() {
           <p className="text-sm text-text-muted">
             Explore adoption trends, topic mapping, and resource nexus insights
           </p>
-        </div>
-
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded border border-emerald-200 bg-emerald-50 text-emerald-800 text-xs">
-          <CheckCircle2 className="text-emerald-600" size={14} />
-          <span>
-            Live Models Active (Last update: {lastTrained ? new Date(lastTrained).toLocaleTimeString() : 'Recent'})
-          </span>
         </div>
       </div>
 
